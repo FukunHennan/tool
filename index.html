@@ -1,0 +1,3389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PCB 物料柜 · 可视化管理</title>
+<style>
+  /* ============================================================
+     0. 基础变量与重置
+     ============================================================ */
+  :root{
+    --bg: #0b0f14;
+    --panel: #141b23;
+    --panel-2: #1a222c;
+    --line: rgba(255,255,255,.10);
+    --line-soft: rgba(255,255,255,.06);
+    --text: #e8f1f9;
+    --muted: #8b98a7;
+    --muted-2: #64717f;
+    --cyan: #38bdf8;
+    --green: #2dd4a0;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --radius: 12px;
+    --font: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; padding:0; }
+  body{
+    height: 100vh;
+    min-height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-left: 220px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+    transition: padding-left .18s ease;
+  }
+  body.zones-collapsed{ padding-left: 64px; }
+  body.locked{ overflow: hidden; }
+  button{ font-family: inherit; }
+  input, select, textarea{ font-family: inherit; }
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb{ background:#2c3745; border-radius:8px; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+
+  /* ============================================================
+     1. 顶栏
+     ============================================================ */
+  /* 单行顶栏：60px，sticky；左侧区域名 + 指标，右侧搜索 / 缩放 / 导入导出 / 设置 */
+  .topbar{
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    flex: 0 0 auto;
+    height: 60px;
+    padding: 0 16px;
+    background: rgba(11,15,20,.94);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .topbar-inner{
+    height: 100%; max-width: none; margin: 0;
+    display: flex; align-items: center; gap: 14px;
+  }
+
+  .brand{ display: flex; align-items: center; gap: 9px; min-width: 0; flex: 0 1 auto; }
+  .logo{
+    width: 28px; height: 28px; flex: none;
+    border-radius: 6px;
+    display: grid; place-items: center;
+    background: rgba(56,189,248,.10);
+    border: 1px solid rgba(56,189,248,.22);
+    color: #7dd3fc;
+  }
+  .logo svg{ width: 16px; height: 16px; }
+  .brand-text{ min-width: 0; }
+  .brand-name{
+    font-size: 14px; font-weight: 600; letter-spacing: .02em; line-height: 1.2;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .brand-meta{
+    margin-top: 1px;
+    font-size: 10.5px;
+    color: var(--muted-2);
+    letter-spacing: .02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 指标：纯数字，无卡片背景 */
+  .stats{ display: flex; align-items: center; flex: 0 0 auto; }
+  .stat{
+    display: flex; align-items: baseline; gap: 5px;
+    padding: 0 12px;
+    border-left: 1px solid var(--line-soft);
+  }
+  .stat:first-child{ border-left: 0; padding-left: 2px; }
+  .stat-label{ font-size: 10.5px; color: var(--muted-2); letter-spacing: .02em; }
+  .stat b{ font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--text); line-height: 1; }
+  .stat b small{ font-size: 10px; font-weight: 400; color: var(--muted-2); }
+  .stat.warn b{ color: #fbbf24; }
+
+  .tool-row{
+    display: flex; align-items: center; gap: 8px;
+    margin-left: auto; min-width: 0;
+    flex: 0 1 auto;
+  }
+  .search-wrap{ position: relative; flex: 1 1 180px; min-width: 96px; max-width: 320px; }
+  .searchbox{
+    display: flex; align-items: center; gap: 6px;
+    height: 32px;
+    padding: 0 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--line);
+    transition: border-color .16s;
+  }
+  .searchbox:focus-within{ border-color: rgba(56,189,248,.55); }
+  .searchbox > svg{ width: 14px; height: 14px; color: var(--muted); flex: none; }
+  .searchbox input{
+    flex: 1; min-width: 0;
+    height: 100%;
+    background: none; border: 0; outline: 0;
+    color: var(--text);
+    font-size: 12.5px;
+  }
+  .searchbox input::placeholder{ color: #6d7a89; }
+  .searchbox input::-webkit-search-cancel-button{ display: none; }
+  .search-clear{
+    display: none;
+    width: 20px; height: 20px; flex: none;
+    border-radius: 4px;
+    border: 0;
+    background: rgba(255,255,255,.08);
+    color: var(--muted);
+    font-size: 12px; line-height: 1;
+    cursor: pointer;
+  }
+  .search-clear.show{ display: grid; place-items: center; }
+  .search-clear:hover{ color: var(--text); background: rgba(255,255,255,.16); }
+
+  /* 搜索下拉：绝对定位，不撑高顶栏 */
+  .search-drop{
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 0;
+    z-index: 40;
+    width: min(460px, calc(100vw - 40px));
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .search-results{
+    display: none;
+    max-height: 260px; overflow-y: auto;
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(13,19,26,.98);
+    box-shadow: 0 18px 40px -20px rgba(0,0,0,.9);
+  }
+  .search-results.show{ display: block; }
+  .search-result{
+    width: 100%;
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 8px;
+    border: 0; border-radius: 6px;
+    background: none;
+    color: var(--text);
+    font-size: 12.5px; text-align: left; cursor: pointer;
+  }
+  .search-result:hover{ background: rgba(56,189,248,.10); }
+  .search-result .sr-zone{
+    flex: none;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(56,189,248,.12);
+    color: #7dd3fc;
+    font-size: 10.5px;
+  }
+  .search-result .sr-id{ flex: none; font-family: var(--mono); font-size: 11px; color: #9fc0d8; }
+  .search-result .sr-name{ flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-result .sr-qty{ flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+
+  .search-hint{
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--line-soft);
+    background: rgba(13,19,26,.98);
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .search-hint:empty{ display: none; }
+  .search-hint b{ color: #7dd3fc; font-family: var(--mono); }
+  .search-hint.warn{ color: #fbbf24; }
+
+  .actions{ display: flex; gap: 6px; flex: none; }
+  .btn{
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 40px;
+    padding: 0 13px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,.05);
+    color: #d7e3ee;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .16s, border-color .16s, color .16s, transform .16s;
+    white-space: nowrap;
+  }
+  .btn svg{ width: 15px; height: 15px; }
+  .btn:hover{ border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.10); color: #eaf6ff; }
+  .btn:active{ transform: translateY(1px); }
+  .btn.primary{
+    background: linear-gradient(180deg,#3ec7fa,#0ea5e9);
+    border-color: transparent;
+    color: #06121b;
+    font-weight: 700;
+  }
+  .btn.primary:hover{ filter: brightness(1.06); color: #06121b; }
+  .btn.danger.ghost{
+    color: #fca5a5;
+    border-color: rgba(248,113,113,.32);
+    background: rgba(248,113,113,.07);
+  }
+  .btn.danger.ghost:hover{ background: rgba(248,113,113,.16); color: #fecaca; border-color: rgba(248,113,113,.55); }
+  /* 顶栏按钮统一压到 32px */
+  .tool-row .btn{ height: 32px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+  .tool-row .btn.icon-only{ width: 32px; padding: 0; }
+  .tool-row .btn svg{ width: 14px; height: 14px; }
+
+  /* ============================================================
+     2. 柜体
+     ============================================================ */
+  /* 主舞台：撑满顶栏以下的空间，网格区左上对齐 */
+  .stage{
+    flex: 1 1 auto; min-height: 0;
+    max-width: none; margin: 0;
+    padding: 8px 12px 6px;
+    display: flex; flex-direction: column;
+  }
+
+  /* 极简：无外框、无背景、无阴影 */
+  .cabinet{
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column;
+    position: relative;
+    padding: 0;
+    border-radius: 8px;
+    background: transparent;
+  }
+
+  /* 空区域提示：一行文字 + 引导按钮，仅在整区无物料时出现 */
+  .zone-empty{
+    flex: none;
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 0 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .zone-empty[hidden]{ display: none; }
+  .zone-empty .btn{ height: 26px; padding: 0 10px; font-size: 11.5px; }
+
+  /* 内容区零内边距，网格紧贴可用区域左上角 */
+  .cabinet-inner{
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+    border-radius: 8px;
+    background: transparent;
+    overflow: auto;
+  }
+  .grid{
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+    gap: 10px;
+  }
+  .cell-gap{ min-width: 0; border-radius: 12px; }
+
+  /* ---------- 格门 ---------- */
+  .cell{
+    position: relative;
+    display: flex; flex-direction: column;
+    min-width: 0;
+    min-height: 112px;
+    padding: 10px 10px 9px 16px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.075);
+    background: #171e26;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .16s, background .16s, opacity .2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cell::before{ /* 状态标识条（唯一的状态色块，无发光） */
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 6px 0 0 6px;
+    background: #3b4654;
+  }
+  .cell:hover{
+    border-color: rgba(56,189,248,.35);
+    background: #1a222b;
+  }
+  .cell:focus-visible{
+    outline: 2px solid rgba(56,189,248,.8);
+    outline-offset: 2px;
+  }
+  .cell-top{ display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .cell-id{
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: #9fc0d8;
+    padding: 3px 6px;
+    line-height: 1;
+    flex: none;
+  }
+  .cell-tag{
+    font-size: 9.5px;
+    color: #93a1b1;
+    padding: 2px 7px;
+    line-height: 1.4;
+    max-width: 62%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cell-main{ flex: 1; min-height: 0; margin-top: 7px; }
+  .cell-name{
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 13.5px;
+    font-weight: 650;
+    line-height: 1.34;
+    color: #eaf4fc;
+    word-break: break-word;
+  }
+  .cell-model{
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: #8797a8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cell-foot{
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 6px;
+    margin-top: 8px;
+  }
+  .cell-qty{
+    font-family: var(--mono);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    color: #f4f9fd;
+    letter-spacing: -.01em;
+  }
+  .cell-qty em{
+    font-style: normal;
+    font-size: 9.5px;
+    font-weight: 500;
+    color: #8797a8;
+    margin-left: 3px;
+  }
+  .cell-state-text{
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    padding-bottom: 1px;
+    flex: none;
+  }
+  .cell-level{
+    height: 3px;
+    margin-top: 8px;
+    border-radius: 2px;
+    background: rgba(255,255,255,.07);
+    overflow: hidden;
+  }
+  .cell-level i{ display: block; height: 100%; border-radius: 2px; background: var(--green); }
+  .cell.state-empty{ background: #151b22; border-style: dashed; border-color: rgba(255,255,255,.1); }
+  .cell.state-empty::before{ background: #3b4654; }
+  .cell.state-empty .cell-tag{ color: #6f7d8c; }
+  .cell-empty{
+    flex: 1;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    color: #56626f;
+    font-size: 11.5px;
+    padding: 8px 0 2px;
+  }
+  .cell-empty svg{ width: 16px; height: 16px; }
+  .state-empty .cell-qty{ color: #4d5a68; }
+  .state-normal::before{ background: var(--green); }
+  .cell.state-low{
+    border-color: rgba(245,158,11,.34);
+    background: rgba(245,158,11,.06);
+  }
+  .state-low::before{ background: var(--amber); }
+  .state-low .cell-qty{ color: #fcd34d; }
+  .state-low .cell-level i{ background: var(--amber); }
+  .state-low .cell-state-text{ color: #fbbf24; }
+  .cell.state-out{
+    border-color: rgba(239,68,68,.4);
+    background: rgba(239,68,68,.07);
+  }
+  .state-out::before{ background: var(--red); }
+  .state-out .cell-qty{ color: #fca5a5; }
+  .state-out .cell-level i{ background: var(--red); width: 0 !important; }
+  .state-out .cell-state-text{ color: #f87171; animation: outblink 1.8s ease-in-out infinite; }
+  @keyframes outblink{ 0%,100%{ opacity: 1 } 50%{ opacity: .45 } }
+
+  .cell.hit{
+    border-color: rgba(56,189,248,.75);
+    box-shadow: 0 0 0 1px rgba(56,189,248,.75);
+  }
+  .cell.dim{ opacity: .38; filter: saturate(.55); }
+  .cell.locate{ animation: locatePulse .95s ease-out 2; }
+  @keyframes locatePulse{
+    0%{ box-shadow: 0 0 0 0 rgba(56,189,248,.85), 0 0 0 2px rgba(56,189,248,.9); }
+    70%{ box-shadow: 0 0 0 12px rgba(56,189,248,0), 0 0 0 2px rgba(56,189,248,.9); }
+    100%{ box-shadow: 0 0 0 0 rgba(56,189,248,0), 0 0 0 2px rgba(56,189,248,.9); }
+  }
+
+  /* ---------- 图例：单行，色点 + 文字，总高 ≤ 28px ---------- */
+  .legend{
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin-top: 6px;
+    padding: 0 2px;
+    height: 20px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-item{ display: inline-flex; align-items: center; gap: 5px; }
+  .legend-item .dot{ width: 6px; height: 6px; border-radius: 50%; }
+  .dot.empty{ background: #3b4654; }
+  .dot.normal{ background: var(--green); }
+  .dot.low{ background: var(--amber); }
+  .dot.out{ background: var(--red); }
+
+  /* ============================================================
+     3. 遮罩 / 抽屉
+     ============================================================ */
+  .scrim{
+    position: fixed; inset: 0;
+    z-index: 50;
+    background: rgba(3,6,9,.62);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s;
+  }
+  .scrim.show{ opacity: 1; pointer-events: auto; }
+
+  .drawer{
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    z-index: 60;
+    width: min(430px, 100%);
+    display: flex; flex-direction: column;
+    background: linear-gradient(180deg,#18202a,#121820);
+    border-left: 1px solid var(--line);
+    box-shadow: -30px 0 80px -30px rgba(0,0,0,.95);
+    transform: translateX(105%);
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+  }
+  .drawer.open{ transform: translateX(0); }
+  .drawer-grip{ display: none; }
+  .drawer-head{
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 20px 18px 14px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .drawer-eyebrow{
+    font-size: 10px;
+    letter-spacing: .2em;
+    color: var(--muted-2);
+    text-transform: uppercase;
+  }
+  .drawer-head h2{
+    margin: 4px 0 0;
+    font-family: var(--mono);
+    font-size: 26px;
+    letter-spacing: .06em;
+    line-height: 1;
+  }
+  .drawer-head-right{ display: flex; align-items: center; gap: 8px; }
+  .badge{
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: rgba(45,212,160,.12);
+    color: #6ee7bf;
+    border: 1px solid rgba(45,212,160,.3);
+    white-space: nowrap;
+  }
+  .badge.badge-empty{ background: rgba(255,255,255,.06); color: var(--muted); border-color: var(--line); }
+  .badge.badge-low{ background: rgba(245,158,11,.12); color: #fbbf24; border-color: rgba(245,158,11,.35); }
+  .badge.badge-out{ background: rgba(239,68,68,.12); color: #f87171; border-color: rgba(239,68,68,.35); }
+  .icon-btn{
+    width: 32px; height: 32px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 8px;
+    border: 1px solid var(--line-soft);
+    background: rgba(255,255,255,.05);
+    color: var(--muted);
+    font-size: 18px; line-height: 1;
+    cursor: pointer;
+  }
+  .icon-btn:hover{ color: var(--text); background: rgba(255,255,255,.12); }
+  .drawer-body{
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .drawer-foot{
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line-soft);
+    background: rgba(9,13,18,.6);
+  }
+  .drawer-foot .btn.primary{ flex: 1.4; height: 44px; }
+  .drawer-foot .btn.danger.ghost{ height: 44px; }
+
+  /* ---------- 表单 ---------- */
+  .field{ display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .field label{
+    font-size: 11.5px;
+    letter-spacing: .05em;
+    color: var(--muted);
+  }
+  .field input, .field select, .field textarea{
+    width: 100%;
+    padding: 9px 11px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,.045);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s, background .15s;
+  }
+  .field textarea{ resize: vertical; min-height: 58px; line-height: 1.5; font-size: 13px; }
+  .field input:focus, .field select:focus, .field textarea:focus{
+    border-color: rgba(56,189,248,.55);
+    box-shadow: 0 0 0 3px rgba(56,189,248,.1);
+    background: rgba(255,255,255,.07);
+  }
+  .field select{ appearance: none; -webkit-appearance: none; cursor: pointer; }
+  .field-row{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .readonly{
+    padding: 9px 11px;
+    border-radius: 9px;
+    border: 1px dashed rgba(255,255,255,.12);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .hint{ font-size: 11px; color: var(--muted-2); margin-top: 2px; }
+  .stepper{ display: flex; align-items: center; gap: 8px; }
+  .step-btn{
+    width: 40px; height: 40px; flex: none;
+    border-radius: 9px;
+    border: 1px solid rgba(56,189,248,.32);
+    background: rgba(56,189,248,.1);
+    color: #7dd3fc;
+    font-size: 20px; line-height: 1;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+  }
+  .step-btn:hover{ background: rgba(56,189,248,.2); }
+  .step-btn:active{ transform: scale(.96); }
+  .stepper #f-qty{
+    flex: 1; min-width: 0;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 19px;
+    font-weight: 700;
+  }
+  .stepper .unit-input{
+    width: 64px; flex: none;
+    text-align: center;
+    padding-left: 4px; padding-right: 4px;
+  }
+
+  /* ============================================================
+     4. 设置弹窗 / Toast
+     ============================================================ */
+  .modal-mask{
+    position: fixed; inset: 0;
+    z-index: 70;
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px;
+    background: rgba(3,6,9,.72);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  .modal-mask.show{ opacity: 1; pointer-events: auto; }
+  .modal{
+    width: min(460px, 100%);
+    max-height: calc(100vh - 36px);
+    overflow-y: auto;
+    border-radius: 8px;
+    background: #151c24;
+    border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 40px 90px -30px #000;
+    transform: translateY(12px) scale(.98);
+    transition: transform .22s;
+  }
+  .modal-mask.show .modal{ transform: none; }
+  .modal-head{
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 18px 20px 12px;
+  }
+  .modal-head h2{ margin: 0; font-size: 16px; letter-spacing: .03em; }
+  .modal-body{ padding: 6px 20px 4px; }
+  .modal-foot{
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 14px 20px 18px;
+  }
+  .modal-note{
+    display: flex; gap: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(56,189,248,.07);
+    border: 1px solid rgba(56,189,248,.16);
+    color: #9dc4da;
+    font-size: 12px;
+    line-height: 1.6;
+    margin-bottom: 14px;
+  }
+  .modal-note svg{ width: 15px; height: 15px; flex: none; margin-top: 2px; color: #7dd3fc; }
+
+  /* ---------- 布局编辑器 ---------- */
+  .modal.layout-modal{ width: min(680px, 100%); }
+  .segmented{
+    display: flex; gap: 4px;
+    padding: 4px;
+    margin-bottom: 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--line-soft);
+  }
+  .seg-btn{
+    flex: 1;
+    height: 34px;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s, color .15s, box-shadow .15s;
+    white-space: nowrap;
+  }
+  .seg-btn:hover{ color: var(--text); }
+  .seg-btn.active{
+    background: rgba(56,189,248,.14);
+    color: #bfe9ff;
+    box-shadow: inset 0 0 0 1px rgba(56,189,248,.38);
+  }
+  .mode-panel[hidden]{ display: none; }
+  .row-editor{
+    max-height: 188px;
+    overflow-y: auto;
+    padding: 7px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(0,0,0,.16);
+  }
+  .row-editor-item{
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 2px;
+    border-bottom: 1px dashed rgba(255,255,255,.06);
+  }
+  .row-editor-item:last-child{ border-bottom: 0; }
+  .row-letter{
+    width: 26px; height: 26px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 6px;
+    background: rgba(56,189,248,.12);
+    color: #9fd9f5;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .row-title{ flex: 1; font-size: 12px; color: var(--muted); }
+  .row-count{
+    width: 62px;
+    padding: 5px 8px;
+    text-align: center;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,.045);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+  }
+  .row-count:focus{ border-color: rgba(56,189,248,.55); box-shadow: 0 0 0 2px rgba(56,189,248,.1); }
+  .row-unit{ font-size: 11px; color: var(--muted-2); }
+  .row-del{ width: 26px; height: 26px; font-size: 14px; }
+  .row-del-space{ width: 26px; height: 26px; flex: none; }
+  .row-editor-foot{
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-top: 10px;
+  }
+  .btn.tiny{ height: 32px; padding: 0 11px; font-size: 12px; }
+  .row-editor-foot .hint{ margin: 0; text-align: right; }
+
+  .preview-block{
+    margin-top: 14px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(0,0,0,.18);
+    overflow: hidden;
+  }
+  .preview-head{
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 12px;
+    font-size: 11px;
+    letter-spacing: .08em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .preview-head span:last-child{ font-family: var(--mono); letter-spacing: 0; color: #9fd9f5; }
+  .preview-frame{
+    max-height: 224px;
+    overflow-y: auto;
+    padding: 12px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,0) 40%),
+      linear-gradient(180deg,#1b2430,#10161d);
+  }
+  .preview-grid{
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+    gap: 3px;
+  }
+  .preview-cell{
+    height: 22px;
+    min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,.09);
+    background: #232c37;
+    color: #8fa3b6;
+    font-family: var(--mono);
+    font-size: 8px;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .preview-cell.state-normal{ border-color: rgba(45,212,160,.4); background: rgba(45,212,160,.14); color: #7ee7c3; }
+  .preview-cell.state-low{ border-color: rgba(245,158,11,.45); background: rgba(245,158,11,.15); color: #fcd34d; }
+  .preview-cell.state-out{ border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.16); color: #fca5a5; }
+  .preview-cell.state-empty{ border-style: dashed; color: #6b7a89; }
+  .preview-grid.dense .preview-cell{ font-size: 6.5px; }
+  .preview-gap{ height: 22px; }
+  .preview-note{
+    display: flex; flex-wrap: wrap; gap: 4px 10px;
+    padding: 8px 12px 10px;
+    border-top: 1px solid var(--line-soft);
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .preview-note b{ font-family: var(--mono); color: #a5e3ff; font-weight: 600; }
+  .preview-note .warn{ color: #fbbf24; }
+
+  /* ============================================================
+     3.5 区域侧边栏（zones）
+     ============================================================ */
+  .zones-panel{
+    position: fixed; left: 0; top: 0; bottom: 0;
+    z-index: 50;
+    width: 220px;
+    display: flex; flex-direction: column;
+    padding: 10px 8px;
+    background: #0e141b;
+    border-right: 1px solid var(--line-soft);
+    transition: width .18s ease;
+  }
+  body.zones-collapsed .zones-panel{ width: 64px; }
+  .zones-head{
+    flex: none;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 2px 4px 8px;
+  }
+  .zones-kicker{ font-size: 9px; letter-spacing: .16em; color: var(--muted-2); }
+  .zones-title h2{ margin: 1px 0 0; font-size: 13px; letter-spacing: .04em; }
+  .zones-toggle{
+    width: 26px; height: 26px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,.04);
+    color: var(--muted);
+    font-size: 12px; cursor: pointer;
+  }
+  .zones-toggle:hover{ color: var(--text); border-color: rgba(56,189,248,.45); }
+  .zones-scroll{ flex: 1; min-height: 0; overflow-y: auto; padding: 0; }
+  .zones-list{ display: flex; flex-direction: column; gap: 4px; }
+  .zone-item{
+    position: relative;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 7px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.05);
+    background: rgba(255,255,255,.02);
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .zone-item:hover{ background: rgba(56,189,248,.06); border-color: rgba(56,189,248,.22); }
+  .zone-item.active{
+    background: rgba(56,189,248,.09);
+    border-color: rgba(56,189,248,.30);
+    box-shadow: inset 3px 0 0 #38bdf8;
+  }
+  .zone-item:focus-visible{ outline: 2px solid rgba(56,189,248,.75); outline-offset: 1px; }
+  .zone-mark{
+    width: 24px; height: 24px; flex: none;
+    display: grid; place-items: center;
+    border-radius: 6px;
+    border: 1px solid rgba(56,189,248,.22);
+    background: rgba(56,189,248,.10);
+    color: #9fd9f5;
+    font-size: 11px; font-weight: 700;
+  }
+  .zone-item.active .zone-mark{ background: rgba(56,189,248,.20); color: #e6f7ff; }
+  .zone-body{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .zone-name{ font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .zone-meta{ font-family: var(--mono); font-size: 9.5px; color: var(--muted-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .zone-tools{ flex: none; display: flex; gap: 1px; opacity: 0; transition: opacity .15s; }
+  .zone-item:hover .zone-tools, .zone-item:focus-within .zone-tools{ opacity: 1; }
+  .zone-act{
+    width: 20px; height: 20px;
+    display: grid; place-items: center;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    background: rgba(255,255,255,.04);
+    color: var(--muted);
+    font-size: 10px; line-height: 1; cursor: pointer;
+  }
+  .zone-act:hover{ color: #bfe9ff; border-color: rgba(56,189,248,.35); }
+  .zone-act:disabled{ opacity: .3; cursor: not-allowed; }
+  .zones-foot{ flex: none; display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
+  .zones-foot .btn{ width: 100%; }
+  .zones-tip{ font-size: 9.5px; color: var(--muted-2); text-align: center; }
+  .zones-scrim{
+    position: fixed; inset: 0; z-index: 60;
+    display: none;
+    background: rgba(3,7,12,.62);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  }
+  .zones-scrim.show{ display: block; }
+  body.zones-collapsed .zones-title,
+  body.zones-collapsed .zone-body,
+  body.zones-collapsed .zone-tools,
+  body.zones-collapsed .zones-tip,
+  body.zones-collapsed .zone-add-text{ display: none; }
+  body.zones-collapsed .zones-head{ justify-content: center; padding: 2px 0 10px; }
+  body.zones-collapsed .zone-item{ justify-content: center; padding: 7px; }
+  body.zones-collapsed .zone-mark{ width: 32px; height: 32px; }
+  body.zones-collapsed .zones-foot .btn{ padding: 0; height: 36px; font-size: 16px; }
+
+  /* 跨区域搜索 */
+  .cross-toggle{
+    height: 32px; flex: none;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 0 9px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,.04);
+    color: var(--muted);
+    font-size: 11.5px; white-space: nowrap; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .cross-toggle input{ width: 13px; height: 13px; margin: 0; accent-color: #38bdf8; }
+  .cross-toggle.on{ color: #bfe9ff; border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.1); }
+
+  /* 区域编辑器底部操作区 */
+  .modal-foot.split{ justify-content: space-between; }
+  .foot-left, .foot-right{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .foot-left[hidden]{ display: none; }
+  .preview-cell.restore{ box-shadow: inset 0 0 0 1px rgba(56,189,248,.7); }
+
+  .toasts{
+    position: fixed;
+    left: 50%; bottom: 24px;
+    z-index: 90;
+    transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    pointer-events: none;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+  .toast{
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: rgba(22,30,39,.97);
+    border: 1px solid rgba(255,255,255,.14);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: 0 16px 40px -14px #000;
+    animation: toastIn .22s ease-out;
+    max-width: 100%;
+  }
+  .toast.ok{ border-color: rgba(45,212,160,.45); }
+  .toast.warn{ border-color: rgba(245,158,11,.5); }
+  .toast.err{ border-color: rgba(239,68,68,.55); }
+  @keyframes toastIn{ from{ opacity:0; transform: translateY(8px); } to{ opacity:1; transform:none; } }
+
+  /* ============================================================
+     5. 响应式
+     ============================================================ */
+  @media (max-width: 1180px){
+    .stat{ padding: 0 8px; }
+    .brand-meta{ max-width: 150px; }
+  }
+  @media (max-width: 860px){
+    body, body.zones-collapsed{ padding-left: 56px; }
+    .zones-panel, body.zones-collapsed .zones-panel{ width: 56px; padding: 8px 5px; }
+    .zones-panel .zones-title,
+    .zones-panel .zone-body,
+    .zones-panel .zone-tools,
+    .zones-panel .zones-tip,
+    .zones-panel .zone-add-text{ display: none; }
+    .zones-panel .zones-head{ justify-content: center; }
+    .zones-panel .zone-item{ justify-content: center; padding: 6px; }
+    .zones-panel .zone-mark{ width: 32px; height: 32px; }
+    .zones-panel .zones-foot .btn{ padding: 0; height: 36px; font-size: 16px; }
+    .zones-panel.mobile-open{
+      width: min(272px, 86vw);
+      z-index: 70;
+      padding: 12px 10px;
+      box-shadow: 20px 0 60px -20px #000;
+    }
+    .zones-panel.mobile-open .zones-title,
+    .zones-panel.mobile-open .zones-tip{ display: block; }
+    .zones-panel.mobile-open .zone-body{ display: flex; }
+    .zones-panel.mobile-open .zone-tools{ display: flex; opacity: 1; }
+    .zones-panel.mobile-open .zone-add-text{ display: inline; }
+    .zones-panel.mobile-open .zones-head{ justify-content: space-between; }
+    .zones-panel.mobile-open .zone-item{ justify-content: flex-start; padding: 8px; }
+    .zones-panel.mobile-open .zone-mark{ width: 30px; height: 30px; }
+    .zones-panel.mobile-open .zones-foot .btn{ padding: 0 13px; height: 40px; font-size: 13px; }
+  }
+  @media (max-width: 720px){
+    /* 窄屏：顶栏换行成两行，功能一个不丢 */
+    .topbar{ height: auto; padding: 0 10px; }
+    .topbar-inner{ flex-wrap: wrap; padding: 6px 0; gap: 6px 8px; }
+    .brand{ flex: 1 1 auto; }
+    .stats{ display: none; }
+    .tool-row{ width: 100%; margin-left: 0; flex-wrap: wrap; gap: 6px; }
+    .search-wrap{ order: 1; flex: 1 1 100%; max-width: none; }
+    .cross-toggle{ order: 2; }
+    .zoom-ctl{ order: 3; }
+    .actions{ order: 4; margin-left: auto; }
+    .search-hint{ font-size: 11px; }
+    .stage{ padding: 6px 6px 4px; }
+    .cell{ min-height: 92px; padding: 8px 8px 7px 12px; border-radius: 6px; }
+    .cell::before{ border-radius: 6px 0 0 6px; width: 3px; }
+    .cell-id{ font-size: 9px; padding: 2px 4px; }
+    .cell-tag{ font-size: 8.5px; padding: 1px 5px; }
+    .cell-main{ margin-top: 5px; }
+    .cell-name{ font-size: 11.5px; line-height: 1.3; }
+    .cell-model{ font-size: 9px; }
+    .cell-foot{ margin-top: 6px; }
+    .cell-qty{ font-size: 15px; }
+    .cell-qty em{ font-size: 8.5px; }
+    .cell-state-text{ font-size: 8.5px; }
+    .cell-level{ margin-top: 6px; }
+    .cell-empty{ font-size: 10px; gap: 4px; }
+    .cell-empty svg{ width: 13px; height: 13px; }
+    .legend{ gap: 12px; font-size: 11px; }
+
+    .modal{ max-height: 92vh; border-radius: 16px; }
+    .modal.layout-modal{ width: 100%; }
+    .modal-head{ padding: 16px 16px 10px; }
+    .modal-body{ padding: 4px 16px 2px; }
+    .modal-foot{ padding: 12px 16px 16px; }
+    .row-editor{ max-height: 150px; }
+    .preview-frame{ max-height: 190px; padding: 8px; }
+    .preview-cell{ height: 19px; }
+    .preview-gap{ height: 19px; }
+
+    .drawer{
+      top: auto; left: 0; right: 0; bottom: 0;
+      width: auto;
+      max-height: 90vh;
+      border-left: 0;
+      border-top: 1px solid var(--line);
+      border-radius: 10px 10px 0 0;
+      transform: translateY(105%);
+      box-shadow: 0 -30px 80px -30px rgba(0,0,0,.95);
+    }
+    .drawer.open{ transform: translateY(0); }
+    .drawer-grip{
+      display: block;
+      width: 44px; height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,.22);
+      margin: 8px auto 0;
+    }
+    .drawer-head{ padding: 8px 16px 12px; }
+    .drawer-head h2{ font-size: 22px; }
+    .drawer-body{ padding: 14px 16px; }
+    .drawer-foot{ padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+    .drawer-foot .btn{ height: 44px; }
+    .toasts{ bottom: 16px; }
+  }
+  @media (max-width: 400px){
+    .brand-name{ font-size: 13px; }
+    .brand-meta{ display: none; }
+    .legend{ gap: 10px; }
+    .field-row{ grid-template-columns: 1fr; gap: 0; }
+    .stepper .unit-input{ width: 54px; }
+  }
+  /* ============================================================
+     5.5 柜体铺满 + 等比格 + 均匀间距 + 行标 / 列标（sticky）
+     ============================================================ */
+  /* 主舞台纵向铺满：顶栏 / 舞台 / 页脚用 flex 分配，柜内滚动代替页面滚动 */
+  .topbar{ flex: 0 0 auto; }
+  .stage{
+    flex: 1 1 auto; min-height: 0;
+    max-width: none; margin: 0;
+    padding: 8px 12px 6px;
+    display: flex; flex-direction: column;
+  }
+  .cabinet{ flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; position: relative; }
+  .legend{ flex: 0 0 auto; margin-top: 6px; }
+
+  .cabinet-inner{
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    --rlabel: 32px;
+    --clabel: 22px;
+    --cell-gap-x: 12px;
+    --cell-gap-y: 12px;
+  }
+  /* 左侧行标列 + 顶部列标行；格子尺寸 / 间距由 applyZoom 写入变量 */
+  .cabinet-inner .grid{
+    /* 让 grid 盒宽度与轨道总宽一致，否则 sticky 会被 100% 宽的容器裁住 */
+    width: max-content;
+    grid-template-columns: var(--rlabel) repeat(var(--cols, 4), var(--cell-w, 96px));
+    grid-template-rows: var(--clabel);
+    grid-auto-rows: var(--cell-h, 88px);
+    gap: var(--cell-gap-y) var(--cell-gap-x);
+    justify-content: start;
+    align-content: start;
+  }
+  /* 行高由轨道决定，格子本身不能再被 min-height 撑开 */
+  .cabinet-inner .cell{ min-height: 0; overflow: hidden; }
+
+  /* 行标 1/2/3…、列标 1/2/3…：字号 / 底色 / 对齐完全一致，滚动时常驻 */
+  .axis-label{
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: .02em;
+    color: var(--muted);
+    background: rgba(255,255,255,.045);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 4px;
+    user-select: none;
+  }
+  .axis-col{ position: sticky; top: 0; z-index: 4; }
+  .axis-row{ position: sticky; left: 0; z-index: 3; }
+  .axis-corner{
+    position: sticky; top: 0; left: 0; z-index: 5;
+    background: var(--bg);
+    border: 0;
+  }
+  /* 选中格 / 命中格所在的行列同步高亮 */
+  .axis-label.hit{
+    background: rgba(245,158,11,.16);
+    border-color: rgba(245,158,11,.55);
+    color: #fbbf24;
+  }
+
+  /* ---------- 信息分级：120×110 为完整档，触底后逐级降级 ---------- */
+  .cabinet-inner[data-band="lg"] .cell{ padding: 9px 9px 8px 14px; }
+  .cabinet-inner[data-band="lg"] .cell-id{ font-size: 10px; padding: 2px 5px; }
+  .cabinet-inner[data-band="lg"] .cell-tag{ font-size: 9px; padding: 1px 6px; }
+  .cabinet-inner[data-band="lg"] .cell-main{ margin-top: 5px; }
+  .cabinet-inner[data-band="lg"] .cell-name{ font-size: 12.5px; line-height: 1.28; }
+  .cabinet-inner[data-band="lg"] .cell-model{ margin-top: 2px; font-size: 9.5px; }
+  .cabinet-inner[data-band="lg"] .cell-foot{ margin-top: 5px; }
+  .cabinet-inner[data-band="lg"] .cell-qty{ font-size: 16px; }
+  .cabinet-inner[data-band="lg"] .cell-level{ margin-top: 5px; }
+
+  .cabinet-inner[data-band="md"] .cell{ padding: 8px 8px 7px 12px; }
+  .cabinet-inner[data-band="md"] .cell-tag{ display: none; }
+  .cabinet-inner[data-band="md"] .cell-model{ display: none; }
+  .cabinet-inner[data-band="md"] .cell-main{ margin-top: 5px; }
+  .cabinet-inner[data-band="md"] .cell-name{ font-size: 12.5px; }
+  .cabinet-inner[data-band="md"] .cell-foot{ margin-top: 5px; }
+  .cabinet-inner[data-band="md"] .cell-qty{ font-size: 16px; }
+  .cabinet-inner[data-band="md"] .cell-level{ margin-top: 5px; }
+
+  .cabinet-inner[data-band="sm"] .cell{ padding: 6px 7px 6px 10px; }
+  .cabinet-inner[data-band="sm"] .cell-tag,
+  .cabinet-inner[data-band="sm"] .cell-model,
+  .cabinet-inner[data-band="sm"] .cell-empty{ display: none; }
+  .cabinet-inner[data-band="sm"] .cell-id{ font-size: 9px; padding: 1px 4px; }
+  .cabinet-inner[data-band="sm"] .cell-main{ margin-top: 2px; }
+  .cabinet-inner[data-band="sm"] .cell-name{
+    font-size: 11.5px; line-height: 1.25;
+    -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .cabinet-inner[data-band="sm"] .cell-foot{ margin-top: 2px; }
+  .cabinet-inner[data-band="sm"] .cell-qty{ font-size: 14px; }
+  .cabinet-inner[data-band="sm"] .cell-qty em{ font-size: 8.5px; }
+  .cabinet-inner[data-band="sm"] .cell-level{ display: none; }
+
+  .cabinet-inner[data-band="xs"] .cell-tag,
+  .cabinet-inner[data-band="xs"] .cell-model,
+  .cabinet-inner[data-band="xs"] .cell-name,
+  .cabinet-inner[data-band="xs"] .cell-qty,
+  .cabinet-inner[data-band="xs"] .cell-level,
+  .cabinet-inner[data-band="xs"] .cell-empty,
+  .cabinet-inner[data-band="xs"] .cell-state-text{ display: none; }
+
+  /* ---------- 触底提示（柜体右下角，不随内容滚动） ---------- */
+  .zoom-tip{
+    position: absolute; right: 12px; bottom: 12px; z-index: 6;
+    padding: 5px 10px;
+    border-radius: 8px;
+    background: rgba(12,18,25,.92);
+    border: 1px solid rgba(233,164,40,.5);
+    color: #f2c46b;
+    font-size: 11px; letter-spacing: .02em;
+    pointer-events: none;
+    opacity: 0; transform: translateY(4px);
+    transition: opacity .2s, transform .2s;
+  }
+  .zoom-tip.show{ opacity: 1; transform: translateY(0); }
+
+  /* ---------- 缩放控件（柜体铭牌上，浅色金属底） ---------- */
+  .zoom-ctl{ display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+  .zoom-btn{
+    height: 24px; padding: 0 9px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px; font-weight: 600; letter-spacing: .02em;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .zoom-btn:hover{ background: rgba(255,255,255,.05); color: var(--text); }
+  .zoom-btn.active{
+    background: rgba(56,189,248,.12);
+    color: #bae6fd;
+    border-color: rgba(56,189,248,.35);
+  }
+  .zoom-slider{ display: none; align-items: center; gap: 6px; }
+  .zoom-ctl[data-mode="fixed"] .zoom-slider{ display: flex; }
+  .zoom-slider input[type="range"]{ width: 96px; height: 16px; accent-color: var(--cyan); cursor: pointer; }
+  .zoom-pct{
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    color: var(--muted); min-width: 40px; text-align: right;
+  }
+
+  @media (max-width: 720px){
+    .stage{ padding: 6px 8px 4px; }
+    .cabinet-inner{ --rlabel: 28px; --clabel: 22px; }
+    .legend{ margin-top: 4px; }
+    .zoom-ctl{ gap: 4px; }
+    .zoom-btn{ height: 22px; padding: 0 7px; font-size: 10px; }
+    .zoom-slider input[type="range"]{ width: 68px; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================ 区域侧边栏 ============================ -->
+<aside class="zones-panel" id="zonesPanel" aria-label="区域管理">
+  <div class="zones-head">
+    <div class="zones-title">
+      <div class="zones-kicker">ZONES</div>
+      <h2>区域 / 柜体</h2>
+    </div>
+    <button type="button" class="zones-toggle" id="btnToggleZones" aria-label="折叠区域侧边栏" aria-expanded="true">«</button>
+  </div>
+  <div class="zones-scroll">
+    <div class="zones-list" id="zonesList" role="listbox" aria-label="区域列表"></div>
+  </div>
+  <div class="zones-foot">
+    <button type="button" class="btn primary" id="btnAddZone" title="新增区域">＋<span class="zone-add-text"> 新增区域</span></button>
+    <div class="zones-tip">区域间数据独立保存</div>
+  </div>
+</aside>
+<div class="zones-scrim" id="zonesScrim"></div>
+
+<!-- ============================ 顶栏（单行） ============================ -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <rect x="3" y="3" width="18" height="18" rx="2.5"/>
+          <path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-name" id="zoneTitle">PCB 物料柜</div>
+        <div class="brand-meta" id="brandMeta">加载中…</div>
+      </div>
+    </div>
+    <div class="stats" id="stats"></div>
+
+    <div class="tool-row">
+      <div class="search-wrap">
+        <label class="searchbox" for="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="M20 20l-3.6-3.6"/>
+          </svg>
+          <input id="search" type="search" placeholder="搜索名称 / 型号 / 类别" autocomplete="off" spellcheck="false" aria-label="搜索物料">
+          <button type="button" class="search-clear" id="clearSearch" aria-label="清空搜索">×</button>
+        </label>
+        <div class="search-drop">
+          <div class="search-results" id="searchResults" role="listbox" aria-label="跨区域搜索结果"></div>
+          <div class="search-hint" id="searchHint"></div>
+        </div>
+      </div>
+      <label class="cross-toggle" id="crossToggleWrap" title="开启后在所有区域中搜索">
+        <input type="checkbox" id="crossSearch">
+        <span>跨区</span>
+      </label>
+      <div class="zoom-ctl" id="zoomCtl" data-mode="fill" role="group" aria-label="柜格缩放">
+        <button type="button" class="zoom-btn active" data-zoom="fill" aria-pressed="true" title="按比例适配（格宽上限 120px）">适配</button>
+        <button type="button" class="zoom-btn" data-zoom="fixed" aria-pressed="false" title="固定格宽尺寸">固定</button>
+        <label class="zoom-slider">
+          <input type="range" id="zoomRange" min="76" max="220" step="2" value="120" aria-label="固定格宽（像素）">
+          <span class="zoom-pct" id="zoomPct">120px</span>
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn icon-only" id="btnSettings" title="设置：区域名称、布局与备注" aria-label="设置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2"/>
+            <path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"/>
+          </svg>
+        </button>
+        <button type="button" class="btn icon-only" id="btnExport" title="导出 JSON 备份" aria-label="导出">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 3v12M7.5 10.5L12 15l4.5-4.5"/>
+            <path d="M4 17v2.5A1.5 1.5 0 0 0 5.5 21h13A1.5 1.5 0 0 0 20 19.5V17"/>
+          </svg>
+        </button>
+        <button type="button" class="btn icon-only" id="btnImport" title="从 JSON 备份恢复" aria-label="导入">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <path d="M12 21V9M7.5 13.5L12 9l4.5 4.5"/>
+            <path d="M4 7V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5V7"/>
+          </svg>
+        </button>
+        <input type="file" id="fileInput" accept="application/json,.json" hidden>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ 主网格 ============================ -->
+<main class="stage">
+  <section class="cabinet" aria-label="物料柜柜体">
+    <div class="zone-empty" id="zoneEmpty" hidden>
+      <span>该区域还没有物料，点击任意格位开始入库</span>
+      <button type="button" class="btn" id="btnZoneEmptyCta">去入库</button>
+    </div>
+    <div class="cabinet-inner" id="cabinetInner">
+      <div class="grid" id="grid" role="grid" aria-label="柜格列表"></div>
+    </div>
+    <div class="zoom-tip" id="zoomHint" role="status"></div>
+  </section>
+
+  <div class="legend">
+    <span class="legend-item"><i class="dot empty"></i>空位</span>
+    <span class="legend-item"><i class="dot normal"></i>正常</span>
+    <span class="legend-item"><i class="dot low"></i>低库存</span>
+    <span class="legend-item"><i class="dot out"></i>缺料</span>
+  </div>
+</main>
+
+<!-- ============================ 详情抽屉 ============================ -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-hidden="true">
+  <div class="drawer-grip" aria-hidden="true"></div>
+  <header class="drawer-head">
+    <div>
+      <div class="drawer-eyebrow">格位详情</div>
+      <h2 id="drawerTitle">1-1</h2>
+    </div>
+    <div class="drawer-head-right">
+      <span class="badge" id="drawerStatus">空位</span>
+      <button type="button" class="icon-btn" id="btnCloseDrawer" aria-label="关闭详情">×</button>
+    </div>
+  </header>
+
+  <div class="drawer-body">
+    <form id="cellForm" autocomplete="off" novalidate>
+      <div class="field">
+        <label for="f-name">物料名称</label>
+        <input id="f-name" type="text" maxlength="40" placeholder="如：贴片电阻 0603">
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-category">类别</label>
+          <select id="f-category"></select>
+        </div>
+        <div class="field">
+          <label for="f-model">型号 / 规格</label>
+          <input id="f-model" type="text" maxlength="40" placeholder="如：10kΩ ±1%">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-qty">库存数量</label>
+        <div class="stepper">
+          <button type="button" class="step-btn" id="btnMinus" aria-label="出库 1">−</button>
+          <input id="f-qty" type="number" min="0" step="1" inputmode="decimal" placeholder="0">
+          <button type="button" class="step-btn" id="btnPlus" aria-label="入库 1">+</button>
+          <input id="f-unit" class="unit-input" type="text" maxlength="6" placeholder="单位">
+        </div>
+        <div class="hint">点 − / + 立即出入库；也可直接输入数量后保存</div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-min">最低预警数量</label>
+          <input id="f-min" type="number" min="0" step="1" inputmode="decimal">
+        </div>
+        <div class="field">
+          <label>最后更新</label>
+          <div class="readonly" id="f-time">尚未入库</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-note">存放备注</label>
+        <textarea id="f-note" rows="2" maxlength="120" placeholder="如：第 3 层左侧，配套 0402 焊盘"></textarea>
+      </div>
+    </form>
+  </div>
+
+  <footer class="drawer-foot">
+    <button type="button" class="btn danger ghost" id="btnClear">清空此格</button>
+    <button type="button" class="btn primary" id="btnSave">保存物料</button>
+  </footer>
+</aside>
+
+<!-- ============================ 柜体布局设置 ============================ -->
+<div class="modal-mask" id="settingsMask">
+  <div class="modal layout-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <header class="modal-head">
+      <h2 id="settingsTitle">柜体布局设置</h2>
+      <button type="button" class="icon-btn" id="btnCloseSettings" aria-label="关闭设置">×</button>
+    </header>
+    <div class="modal-body">
+      <form id="settingsForm" novalidate>
+        <div class="field">
+          <label for="s-name">区域名称</label>
+          <input id="s-name" type="text" maxlength="30" placeholder="如：阻容柜 / 一号柜">
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="s-location">位置说明</label>
+            <input id="s-location" type="text" maxlength="60" placeholder="如：实验台左侧 1 号柜">
+          </div>
+          <div class="field">
+            <label for="s-note">区域备注</label>
+            <input id="s-note" type="text" maxlength="80" placeholder="如：阻容 / 连接器常备料">
+          </div>
+        </div>
+
+        <div class="segmented" role="tablist" aria-label="布局方式">
+          <button type="button" class="seg-btn active" data-mode="total" role="tab" aria-selected="true">按总格数自动排</button>
+          <button type="button" class="seg-btn" data-mode="custom" role="tab" aria-selected="false">逐排自定义</button>
+        </div>
+
+        <div class="mode-panel" id="panelTotal">
+          <div class="field-row">
+            <div class="field">
+              <label for="s-total">总格数（1–312）</label>
+              <input id="s-total" type="number" min="1" max="312" step="1" value="24">
+            </div>
+            <div class="field">
+              <label for="s-max">每排最多</label>
+              <select id="s-max"></select>
+            </div>
+          </div>
+          <div class="hint" id="totalHint"></div>
+        </div>
+
+        <div class="mode-panel" id="panelCustom" hidden>
+          <div class="row-editor" id="rowEditor"></div>
+          <div class="row-editor-foot">
+            <button type="button" class="btn tiny" id="btnAddRow">＋ 添加一排</button>
+            <span class="hint">仅可删除末排，避免中间行号错位</span>
+          </div>
+        </div>
+
+        <div class="preview-block">
+          <div class="preview-head">
+            <span>布局预览</span>
+            <span id="previewMeta">—</span>
+          </div>
+          <div class="preview-frame">
+            <div class="preview-grid" id="previewGrid"></div>
+          </div>
+          <div class="preview-note" id="previewNote"></div>
+        </div>
+      </form>
+    </div>
+    <footer class="modal-foot split">
+      <div class="foot-left" id="zoneDanger">
+        <button type="button" class="btn tiny" id="btnCopyZone">复制区域</button>
+        <button type="button" class="btn tiny danger ghost" id="btnDeleteZone">删除区域</button>
+      </div>
+      <div class="foot-right">
+        <button type="button" class="btn" id="btnCancelSettings">取消</button>
+        <button type="button" class="btn primary" id="btnApplySettings">应用布局</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+/* ================================================================
+   PCB 物料柜 · 数据层 / 视图层 / 交互层分离的单文件实现
+   - Store  ：柜体与格位数据、localStorage 持久化、导入导出校验
+   - View   ：纯渲染，不直接读写 localStorage
+   - Actions：交互编排（抽屉、搜索、设置、导入导出）
+   扩展硬件（电子锁 / 扫码枪）时，只需在 Actions 中调用
+   window.MaterialCabinet.onCellChanged 或替换 Store 的持久化实现。
+   ================================================================ */
+(function () {
+  'use strict';
+
+  /* ---------------- 1. 常量 ---------------- */
+  const STORAGE_KEY = 'pcb-material-cabinet.v1';
+  const APP_ID = 'pcb-material-cabinet';
+  const VERSION = 2;
+  const ROWS_MAX = 26;
+  const COLS_MAX = 15;
+  const TOTAL_MAX = ROWS_MAX * COLS_MAX;
+  const ZOOM_KEY = 'pcb-material-cabinet.zoom.v1';
+  const CATEGORIES = ['电阻', '电容', '电感', '连接器', 'IC', '二极管', '晶体管', '晶振', '其他'];
+  const STATUS_TEXT = { empty: '空位', normal: '正常', low: '低库存', out: '缺料' };
+
+  /* ---------------- 2. 工具函数 ---------------- */
+  const $ = (sel, root) => (root || document).querySelector(sel);
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+  const clampInt = (v, min, max, def) => {
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+  };
+  const round2 = (n) => Math.round(n * 100) / 100;
+  const parseQty = (v, def) => {
+    const n = Number(String(v == null ? '' : v).replace(',', '.'));
+    return Number.isFinite(n) && n >= 0 ? round2(n) : def;
+  };
+  const fmtNum = (n) => Number(n || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const fmtTime = (iso) => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
+      ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  };
+  /* 坐标制式：行列全部用数字，格位编号为「行-列」，如第 3 行第 4 列 → 3-4 */
+  const COORD_VERSION = 2;                        // 坐标制式版本：一次性迁移用
+  const LEGACY_KEY_RE = /^([A-Z])(\d{1,2})$/;     // 旧版：字母行 + 数字列（A1 / C4）
+  const CELL_KEY_RE = /^(\d{1,2})-(\d{1,2})$/;    // 新版：数字行 + 连字符 + 数字列
+  const rowLabel = (r) => String(r + 1);
+  const cellKey = (r, c) => rowLabel(r) + '-' + String(c + 1);
+  const labelAt = cellKey;
+  /* 新旧键统一成「行-列」；无法识别或超出 26 行 / 15 列返回 null（不静默丢弃） */
+  const toCellKey = (id) => {
+    const s = String(id == null ? '' : id);
+    let r = 0;
+    let c = 0;
+    const legacy = LEGACY_KEY_RE.exec(s);
+    if (legacy) {
+      r = legacy[1].charCodeAt(0) - 64;
+      c = parseInt(legacy[2], 10);
+    } else {
+      const key = CELL_KEY_RE.exec(s);
+      if (!key) return null;
+      r = parseInt(key[1], 10);
+      c = parseInt(key[2], 10);
+    }
+    if (r < 1 || r > ROWS_MAX || c < 1 || c > COLS_MAX) return null;
+    return String(r) + '-' + String(c);
+  };
+  const totalOf = (counts) => counts.reduce((a, b) => a + b, 0);
+  const maxColsOf = (counts) => counts.reduce((m, n) => Math.max(m, n), 0);
+  const isUniform = (counts) => counts.every((n) => n === counts[0]);
+  const distribute = (total, rows) => {
+    const base = Math.floor(total / rows);
+    const rem = total % rows;
+    return Array.from({ length: rows }, (_, i) => base + (i < rem ? 1 : 0));
+  };
+  /* 自动排布：先按接近斐波那契比例的矩形估算排数，再受 26 排 / 12 列上限约束 */
+  const autoRowCounts = (total) => {
+    let rows = Math.floor(Math.sqrt(total * 1.5) + 0.5);
+    rows = Math.min(ROWS_MAX, Math.max(1, rows));
+    if (Math.ceil(total / rows) > COLS_MAX) rows = Math.ceil(total / COLS_MAX);
+    rows = Math.min(ROWS_MAX, Math.max(1, rows));
+    while (rows < ROWS_MAX && Math.ceil(total / rows) > COLS_MAX) rows++;
+    return distribute(total, rows);
+  };
+  const normalizeCell = (raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const name = String(raw.name == null ? '' : raw.name).trim();
+    if (!name) return null;
+    return {
+      name: name.slice(0, 40),
+      category: CATEGORIES.indexOf(raw.category) >= 0 ? raw.category : '其他',
+      model: String(raw.model == null ? '' : raw.model).trim().slice(0, 40),
+      qty: Number.isFinite(Number(raw.qty)) && Number(raw.qty) >= 0 ? round2(Number(raw.qty)) : 0,
+      unit: (String(raw.unit == null ? '' : raw.unit).trim() || 'pcs').slice(0, 6),
+      minQty: Number.isFinite(Number(raw.minQty)) && Number(raw.minQty) >= 0 ? round2(Number(raw.minQty)) : 0,
+      note: String(raw.note == null ? '' : raw.note).trim().slice(0, 120),
+      updatedAt: (typeof raw.updatedAt === 'string' && !isNaN(Date.parse(raw.updatedAt))
+        ? raw.updatedAt : new Date().toISOString())
+    };
+  };
+  const cellStatus = (cell) => {
+    if (!cell || !cell.name) return 'empty';
+    if (!(Number(cell.qty) > 0)) return 'out';
+    if (Number(cell.minQty) > 0 && Number(cell.qty) < Number(cell.minQty)) return 'low';
+    return 'normal';
+  };
+
+  /* ---------------- 3. 区域工具与数据层 ---------------- */
+  let uidSeq = 0;
+  const uid = () => 'z' + Date.now().toString(36) + (++uidSeq).toString(36) + Math.random().toString(36).slice(2, 5);
+  const absorbCells = (src, dest, prefix) => {
+    if (!src || typeof src !== 'object' || Array.isArray(src)) return;
+    const bad = [];
+    const dup = [];
+    Object.keys(src).forEach((id) => {
+      const key = toCellKey(id);
+      if (!key) { bad.push(id); return; }
+      if (dest[key]) { dup.push('“' + id + '” → ' + key); return; }
+      const cell = normalizeCell(src[id]);
+      if (cell) dest[key] = cell;
+    });
+    if (bad.length) {
+      throw new Error((prefix || '') + '格位编号 “' + bad.slice(0, 5).join('”, “') + '” 无法识别' +
+        '（应为「行-列」如 3-4，旧版如 C4 会自动转换）');
+    }
+    if (dup.length) {
+      throw new Error((prefix || '') + '迁移后出现重复格位编号：' + dup.slice(0, 5).join('、'));
+    }
+  };
+  const normalizeZone = (raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    let rowCounts;
+    if (Array.isArray(raw.rowCounts) && raw.rowCounts.length) {
+      rowCounts = raw.rowCounts.slice(0, ROWS_MAX).map((n) => clampInt(n, 1, COLS_MAX, 4));
+    } else {
+      const rows = clampInt(raw.rows, 1, ROWS_MAX, 6);
+      rowCounts = new Array(rows).fill(clampInt(raw.cols, 1, COLS_MAX, 4));
+    }
+    if (!rowCounts.length) rowCounts = [4];
+    const name = (typeof raw.name === 'string' && raw.name.trim())
+      ? raw.name.trim().slice(0, 30)
+      : '物料柜';
+    const cells = {};
+    const hidden = {};
+    const prefix = '区域「' + name + '」';
+    absorbCells(raw.cells, cells, prefix);
+    absorbCells(raw.hidden, hidden, prefix);
+    const valid = new Set();
+    rowCounts.forEach((n, r) => {
+      for (let c = 0; c < n; c++) valid.add(labelAt(r, c));
+    });
+    Object.keys(cells).forEach((id) => {
+      if (!valid.has(id)) {
+        hidden[id] = cells[id];
+        delete cells[id];
+      }
+    });
+    Object.keys(hidden).forEach((id) => {
+      if (valid.has(id) && !cells[id]) {
+        cells[id] = hidden[id];
+        delete hidden[id];
+      }
+    });
+    const layoutMode = (raw.layoutMode === 'total' || raw.layoutMode === 'custom')
+      ? raw.layoutMode
+      : (isUniform(rowCounts) ? 'total' : 'custom');
+    const idOk = typeof raw.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(raw.id);
+    return {
+      id: idOk ? raw.id : uid(),
+      name,
+      note: String(raw.note == null ? '' : raw.note).trim().slice(0, 80),
+      location: String(raw.location == null ? '' : raw.location).trim().slice(0, 60),
+      rowCounts, layoutMode, cells, hidden
+    };
+  };
+  const makeZone = (input) => normalizeZone(Object.assign({}, input || {}, {
+    id: uid(),
+    cells: (input && input.cells) || {},
+    hidden: (input && input.hidden) || {}
+  }));
+
+  /* 迁移前快照：按区域顺序记录旧键与格位内容，用于迁移后逐项校验 */
+  function legacySnapshot(data) {
+    const src = data || {};
+    const zones = Array.isArray(src.zones) ? src.zones : [{ cells: src.cells, hidden: src.hidden }];
+    return zones.map((z) => ({
+      cells: Object.assign({}, (z && z.cells) || {}),
+      hidden: Object.assign({}, (z && z.hidden) || {})
+    }));
+  }
+
+  /* 迁移校验：区域数、格子数、逐字段（名称/型号/数量/单位/预警值/备注）、丢失键 */
+  function verifyMigration(before, zones) {
+    const errors = [];
+    const rows = [];
+    if (before.length !== zones.length) {
+      errors.push('区域数量不一致（' + before.length + ' → ' + zones.length + '）');
+    }
+    before.forEach((src, i) => {
+      const zone = zones[i];
+      if (!zone) { errors.push('第 ' + (i + 1) + ' 个区域迁移后丢失'); return; }
+      const oldIds = Object.keys(src.cells);
+      const mapped = {};
+      const samples = [];
+      oldIds.forEach((oldId) => {
+        const key = toCellKey(oldId);
+        if (!key) { errors.push('区域「' + zone.name + '」旧键 ' + oldId + ' 无法迁移'); return; }
+        mapped[key] = src.cells[oldId];
+        if (samples.length < 3) samples.push({ from: oldId, to: key });
+      });
+      const kept = Object.keys(zone.cells).length + Object.keys(zone.hidden).length;
+      const expect = oldIds.length + Object.keys(src.hidden).length;
+      if (kept !== expect) {
+        errors.push('区域「' + zone.name + '」格子数量不一致（' + expect + ' → ' + kept + '）');
+      }
+      Object.keys(mapped).forEach((key) => {
+        const a = mapped[key];
+        const b = zone.cells[key] || zone.hidden[key];
+        if (!b) { errors.push('区域「' + zone.name + '」格位 ' + key + ' 丢失'); return; }
+        ['name', 'model', 'qty', 'unit', 'minQty', 'note'].forEach((f) => {
+          const av = String(a[f] == null ? '' : a[f]);
+          const bv = String(b[f] == null ? '' : b[f]);
+          if (av !== bv && errors.length < 12) {
+            errors.push('区域「' + zone.name + '」格位 ' + key + ' 的 ' + f + ' 不一致');
+          }
+        });
+      });
+      rows.push({ zone: zone.name, legacy: oldIds.length, migrated: kept, samples });
+    });
+    return { ok: !errors.length, errors, rows };
+  }
+
+  const Store = {
+    state: null,
+
+    get zone() {
+      const zones = this.state.zones;
+      return zones.find((z) => z.id === this.state.activeZoneId) || zones[0];
+    },
+
+    zoneById(id) { return this.state.zones.find((z) => z.id === id) || null; },
+
+    labels() {
+      const out = [];
+      this.zone.rowCounts.forEach((n, r) => {
+        for (let c = 0; c < n; c++) out.push(labelAt(r, c));
+      });
+      return out;
+    },
+
+    inRange(id) {
+      const m = CELL_KEY_RE.exec(String(id == null ? '' : id));
+      if (!m) return false;
+      const counts = this.zone.rowCounts;
+      const r = parseInt(m[1], 10) - 1;
+      const c = parseInt(m[2], 10) - 1;
+      return r >= 0 && r < counts.length && c >= 0 && c < counts[r];
+    },
+
+    load() {
+      let raw = null;
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch (err) { /* 隐私模式 / file:// 限制 */ }
+      this.migration = null;
+      this.migrationError = null;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && (Array.isArray(parsed.zones) || (parsed.cabinet && parsed.cells))) {
+            const v = Number(parsed.coordVersion);
+            /* 缺少或低于当前坐标版本才迁移；写回后下次直接跳过 */
+            const needMigrate = !(Number.isFinite(v) && v >= COORD_VERSION);
+            const before = needMigrate ? legacySnapshot(parsed) : null;
+            this.state = this.normalize(parsed);
+            if (needMigrate) {
+              this.migration = verifyMigration(before, this.state.zones);
+              if (!this.migration.ok) {
+                throw new Error('迁移校验未通过：' + this.migration.errors.join('；'));
+              }
+              this.persist();
+            }
+            return false;
+          }
+        } catch (err) {
+          /* 不写回，保留原始数据，避免未迁移数据被覆盖丢失 */
+          this.migrationError = err;
+          console.error('[物料柜] 本地数据迁移失败，原始数据保持未覆盖', err);
+        }
+      }
+      this.state = this.seed();
+      if (!this.migrationError) this.persist();
+      return true;
+    },
+
+    normalize(data) {
+      const src = data || {};
+      let zones = [];
+      if (Array.isArray(src.zones)) {
+        zones = src.zones.map((z) => normalizeZone(z)).filter(Boolean);
+      } else if (src.cabinet || src.cells) {
+        /* 兼容旧版单柜体：自动折成一个区域 */
+        const cab = src.cabinet || {};
+        zones = [normalizeZone({
+          id: 'z1',
+          name: cab.name,
+          rows: cab.rows,
+          cols: cab.cols,
+          rowCounts: cab.rowCounts,
+          layoutMode: cab.layoutMode,
+          cells: src.cells,
+          hidden: src.hidden
+        })].filter(Boolean);
+      }
+      if (!zones.length) {
+        zones = [makeZone({ name: 'PCB 物料柜 · A 区', rowCounts: [4, 4, 4, 4, 4, 4], layoutMode: 'total' })];
+      }
+      const seen = new Set();
+      zones.forEach((z) => {
+        if (seen.has(z.id)) z.id = uid();
+        seen.add(z.id);
+      });
+      const active = zones.find((z) => z.id === src.activeZoneId) ? src.activeZoneId : zones[0].id;
+      return { zones, activeZoneId: active };
+    },
+
+    persist() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          app: APP_ID,
+          version: VERSION,
+          coordVersion: COORD_VERSION,
+          activeZoneId: this.state.activeZoneId,
+          zones: this.state.zones
+        }));
+        return true;
+      } catch (err) {
+        console.warn('[物料柜] 写入本地存储失败', err);
+        return false;
+      }
+    },
+
+    seed() {
+      const t = (days) => new Date(Date.now() - days * 86400000).toISOString();
+      const cells = {};
+      const add = (id, name, category, model, qty, unit, minQty, note, days) => {
+        cells[id] = {
+          name, category, model, qty, unit, minQty, note,
+          updatedAt: t(days)
+        };
+      };
+      add('1-1', '贴片电阻 0603', '电阻', '10kΩ ±1% 1/10W', 1200, 'pcs', 200, '上拉 / 下拉通用，紧邻 0603 盘', 2);
+      add('1-2', '贴片电阻 0603', '电阻', '1kΩ ±1% 1/10W', 800, 'pcs', 200, 'LED 限流常用', 3);
+      add('1-3', '贴片电容 0603', '电容', '100nF 50V X7R', 1500, 'pcs', 300, '就近去耦电容', 1);
+      add('1-4', '贴片电容 0805', '电容', '10µF 25V X5R', 320, 'pcs', 100, '电源入口滤波', 5);
+      add('2-1', '功率电感 4.7µH', '电感', 'CD54 绕线 4.7µH', 120, 'pcs', 50, 'DC-DC 输出储能', 3);
+      add('2-2', '磁珠 0603', '电感', '600Ω @100MHz', 450, 'pcs', 100, 'USB 差分共模抑制', 6);
+      add('2-3', '肖特基二极管', '二极管', 'SS34 SMA 40V/3A', 180, 'pcs', 80, '续流 / 防反接', 4);
+      add('2-4', 'ESD 保护管', '二极管', 'ESD5V0S1 SOT-23', 60, 'pcs', 100, 'Type-C 接口静电保护', 7);
+      add('3-1', '连接器 XH2.54', '连接器', '4P 直插 2.54mm', 45, '个', 20, '配套端子座', 2);
+      add('3-2', 'USB Type-C 母座', '连接器', '16P 贴片 沉板', 28, '个', 10, '主板供电 / 数据', 9);
+      add('3-3', '排针 2.54mm', '连接器', '1×40P 单排', 62, '条', 20, '调试口与扩展口', 11);
+      add('3-4', '无源晶振', '晶振', '8MHz 3225 ±10ppm', 22, 'pcs', 30, 'MCU 主时钟', 8);
+      add('4-1', 'MCU 主控', 'IC', 'STM32F103C8T6 LQFP-48', 16, 'pcs', 10, '主控芯片，注意防潮', 4);
+      add('4-2', 'LDO 稳压器', 'IC', 'AMS1117-3.3 SOT-223', 34, 'pcs', 15, '5V → 3.3V 供电', 3);
+      add('4-3', '运算放大器', 'IC', 'LM358 SOP-8', 0, 'pcs', 20, '信号调理，需补货', 12);
+      add('4-4', 'N-MOS 管', '晶体管', 'AO3400 SOT-23', 210, 'pcs', 60, '低边开关 / 电平转换', 1);
+      add('5-1', '精密电阻 0805', '电阻', '4.7kΩ ±0.1%', 90, 'pcs', 60, '采样电阻，精度 0.1%', 5);
+      add('5-2', '铝电解电容', '电容', '220µF 25V 6.3×7.7', 18, 'pcs', 10, '电源缓启动', 13);
+      return {
+        activeZoneId: 'z1',
+        zones: [{
+          id: 'z1',
+          name: 'PCB 物料柜 · A 区',
+          note: '阻容与常用 IC 备料',
+          location: '实验台左侧 1 号柜',
+          rowCounts: [4, 4, 4, 4, 4, 4],
+          layoutMode: 'total',
+          cells,
+          hidden: {}
+        }]
+      };
+    },
+
+    getCell(id) { return this.zone.cells[id] || null; },
+
+    setCell(id, cell) {
+      if (!CELL_KEY_RE.test(id)) return;
+      this.zone.cells[id] = cell;
+      delete this.zone.hidden[id];
+      this.persist();
+    },
+
+    clearCell(id) {
+      delete this.zone.cells[id];
+      this.persist();
+    },
+
+    setActiveZone(id) {
+      if (!this.zoneById(id)) return false;
+      this.state.activeZoneId = id;
+      this.persist();
+      return true;
+    },
+
+    addZone(input) {
+      const zone = makeZone(input);
+      this.state.zones.push(zone);
+      this.state.activeZoneId = zone.id;
+      this.persist();
+      return zone;
+    },
+
+    updateZone(id, input) {
+      const zone = this.zoneById(id);
+      if (!zone) return null;
+      const prev = new Set(this.zoneLabels(zone));
+      zone.name = input.name;
+      if (input.note != null) zone.note = input.note;
+      if (input.location != null) zone.location = input.location;
+      zone.rowCounts = input.rowCounts.slice();
+      zone.layoutMode = input.layoutMode === 'total' ? 'total' : 'custom';
+      const next = new Set(this.zoneLabels(zone));
+      let added = 0;
+      next.forEach((label) => { if (!prev.has(label)) added++; });
+      let stashed = 0;
+      let restored = 0;
+      Object.keys(zone.cells).forEach((label) => {
+        if (!next.has(label)) {
+          zone.hidden[label] = zone.cells[label];
+          delete zone.cells[label];
+          stashed++;
+        }
+      });
+      Object.keys(zone.hidden).forEach((label) => {
+        if (next.has(label)) {
+          zone.cells[label] = zone.hidden[label];
+          delete zone.hidden[label];
+          restored++;
+        }
+      });
+      this.persist();
+      return { added, stashed, restored, total: next.size, rows: zone.rowCounts.length };
+    },
+
+    removeZone(id) {
+      const zones = this.state.zones;
+      if (zones.length <= 1) return false;
+      const idx = zones.findIndex((z) => z.id === id);
+      if (idx < 0) return false;
+      zones.splice(idx, 1);
+      if (this.state.activeZoneId === id) {
+        this.state.activeZoneId = zones[Math.min(idx, zones.length - 1)].id;
+      }
+      this.persist();
+      return true;
+    },
+
+    copyZone(id) {
+      const src = this.zoneById(id);
+      if (!src) return null;
+      const copy = makeZone({
+        name: (src.name + ' 副本').slice(0, 30),
+        note: src.note,
+        location: src.location,
+        layoutMode: src.layoutMode,
+        rowCounts: src.rowCounts.slice(),
+        cells: JSON.parse(JSON.stringify(src.cells)),
+        hidden: JSON.parse(JSON.stringify(src.hidden))
+      });
+      const idx = this.state.zones.findIndex((z) => z.id === id);
+      this.state.zones.splice(idx + 1, 0, copy);
+      this.state.activeZoneId = copy.id;
+      this.persist();
+      return copy;
+    },
+
+    moveZone(id, dir) {
+      const zones = this.state.zones;
+      const idx = zones.findIndex((z) => z.id === id);
+      const to = idx + dir;
+      if (idx < 0 || to < 0 || to >= zones.length) return false;
+      const tmp = zones[idx];
+      zones[idx] = zones[to];
+      zones[to] = tmp;
+      this.persist();
+      return true;
+    },
+
+    zoneLabels(zone) {
+      const out = [];
+      zone.rowCounts.forEach((n, r) => {
+        for (let c = 0; c < n; c++) out.push(labelAt(r, c));
+      });
+      return out;
+    },
+
+    zoneStats(zone) {
+      const z = zone || this.zone;
+      let used = 0; let low = 0; let out = 0; let sum = 0;
+      z.rowCounts.forEach((n, r) => {
+        for (let c = 0; c < n; c++) {
+          const cell = z.cells[labelAt(r, c)];
+          if (!cell) continue;
+          used++;
+          const st = cellStatus(cell);
+          if (st === 'low') low++;
+          if (st === 'out') out++;
+          sum += Number(cell.qty) || 0;
+        }
+      });
+      return { total: totalOf(z.rowCounts), used, low, out, sum };
+    },
+
+    stats() { return this.zoneStats(); },
+
+    search(query) {
+      const q = String(query == null ? '' : query).trim().toLowerCase();
+      if (!q) return [];
+      const z = this.zone;
+      const hits = [];
+      this.zoneLabels(z).forEach((id) => {
+        const cell = z.cells[id];
+        if (!cell) return;
+        const hay = [cell.name, cell.model, cell.category, cell.note].join(' ').toLowerCase();
+        if (hay.indexOf(q) >= 0) hits.push({ id, cell });
+      });
+      return hits;
+    },
+
+    searchAll(query) {
+      const q = String(query == null ? '' : query).trim().toLowerCase();
+      if (!q) return [];
+      const hits = [];
+      this.state.zones.forEach((z) => {
+        this.zoneLabels(z).forEach((id) => {
+          const cell = z.cells[id];
+          if (!cell) return;
+          const hay = [cell.name, cell.model, cell.category, cell.note].join(' ').toLowerCase();
+          if (hay.indexOf(q) >= 0) hits.push({ zoneId: z.id, zoneName: z.name, id, cell });
+        });
+      });
+      return hits;
+    },
+
+    backup() {
+      return {
+        app: APP_ID,
+        version: VERSION,
+        coordVersion: COORD_VERSION,
+        exportedAt: new Date().toISOString(),
+        activeZoneId: this.state.activeZoneId,
+        zones: this.state.zones.map((z) => ({
+          id: z.id,
+          name: z.name,
+          note: z.note,
+          location: z.location,
+          layoutMode: z.layoutMode,
+          rowCounts: z.rowCounts.slice(),
+          cells: Object.assign({}, z.cells),
+          hidden: Object.assign({}, z.hidden)
+        }))
+      };
+    },
+
+    replaceState(data) {
+      const src = data || {};
+      const v = Number(src.coordVersion);
+      const needMigrate = !(Number.isFinite(v) && v >= COORD_VERSION);
+      const before = needMigrate ? legacySnapshot(src) : null;
+      this.state = this.normalize(src);
+      if (needMigrate) {
+        this.migration = verifyMigration(before, this.state.zones);
+        if (!this.migration.ok) {
+          throw new Error('导入数据迁移校验未通过：' + this.migration.errors.join('；'));
+        }
+      }
+      this.persist();
+    }
+  };
+
+  /* ---------------- 4. 导入校验 ---------------- */
+  function validateLayoutFields(obj, prefix) {
+    if (Array.isArray(obj.rowCounts)) {
+      if (!obj.rowCounts.length || obj.rowCounts.length > ROWS_MAX) {
+        throw new Error(prefix + '排数无效（应为 1–' + ROWS_MAX + ' 排）');
+      }
+      obj.rowCounts.forEach((n, i) => {
+        if (!Number.isInteger(n) || n < 1 || n > COLS_MAX) {
+          throw new Error(prefix + '第 ' + (i + 1) + ' 排格数无效（应为 1–' + COLS_MAX + ' 的整数）');
+        }
+      });
+    } else {
+      /* 兼容旧版：仅有 rows / cols */
+      const rows = Number(obj.rows);
+      const cols = Number(obj.cols);
+      if (!Number.isInteger(rows) || rows < 1 || rows > ROWS_MAX) {
+        throw new Error(prefix + '行数无效（应为 1–' + ROWS_MAX + ' 的整数）');
+      }
+      if (!Number.isInteger(cols) || cols < 1 || cols > COLS_MAX) {
+        throw new Error(prefix + '列数无效（应为 1–' + COLS_MAX + ' 的整数）');
+      }
+    }
+    if (obj.layoutMode != null && obj.layoutMode !== 'total' && obj.layoutMode !== 'custom') {
+      throw new Error(prefix + '布局模式无效');
+    }
+    ['name', 'note', 'location'].forEach((k) => {
+      if (obj[k] != null && typeof obj[k] !== 'string') throw new Error(prefix + k + ' 字段格式不正确');
+    });
+  }
+
+  function validateCells(cells, prefix) {
+    if (!cells || typeof cells !== 'object' || Array.isArray(cells)) {
+      throw new Error(prefix + '缺少 cells 格位数据');
+    }
+    const keys = Object.keys(cells);
+    if (keys.length > TOTAL_MAX) throw new Error(prefix + '格位数量异常（超过 ' + TOTAL_MAX + ' 条）');
+    keys.forEach((id) => {
+      const key = toCellKey(id);
+      if (!key) throw new Error(prefix + '格位编号 “' + id + '” 格式不正确（应为「行-列」，如 3-4）');
+      const cell = cells[id];
+      if (!cell || typeof cell !== 'object' || Array.isArray(cell)) throw new Error(prefix + '格位 ' + id + ' 的数据格式不正确');
+      if (typeof cell.name !== 'string' || !cell.name.trim()) throw new Error(prefix + '格位 ' + id + ' 缺少物料名称');
+      if (typeof cell.qty !== 'number' || !isFinite(cell.qty) || cell.qty < 0) throw new Error(prefix + '格位 ' + id + ' 的数量无效');
+      if (cell.minQty != null && (typeof cell.minQty !== 'number' || !isFinite(cell.minQty) || cell.minQty < 0)) {
+        throw new Error(prefix + '格位 ' + id + ' 的预警数量无效');
+      }
+      ['model', 'category', 'unit', 'note'].forEach((k) => {
+        if (cell[k] != null && typeof cell[k] !== 'string') throw new Error(prefix + '格位 ' + id + ' 的 ' + k + ' 字段格式不正确');
+      });
+    });
+  }
+
+  function validateBackup(data) {
+    const fail = (msg) => { throw new Error(msg); };
+    if (!data || typeof data !== 'object' || Array.isArray(data)) fail('文件内容不是有效的 JSON 对象');
+    if (Array.isArray(data.zones)) {
+      if (!data.zones.length) fail('zones 区域列表为空');
+      if (data.zones.length > 50) fail('区域数量异常（超过 50 个）');
+      data.zones.forEach((z, i) => {
+        const prefix = '第 ' + (i + 1) + ' 个区域：';
+        if (!z || typeof z !== 'object' || Array.isArray(z)) fail(prefix + '格式不正确');
+        validateLayoutFields(z, prefix);
+        validateCells(z.cells, prefix);
+        if (z.hidden != null && (typeof z.hidden !== 'object' || Array.isArray(z.hidden))) {
+          fail(prefix + 'hidden 暂存数据格式不正确');
+        }
+      });
+      if (data.activeZoneId != null && typeof data.activeZoneId !== 'string') fail('activeZoneId 格式不正确');
+      return true;
+    }
+
+    /* 兼容旧版单柜体备份 */
+    const cab = data.cabinet;
+    if (!cab || typeof cab !== 'object' || Array.isArray(cab)) fail('缺少 zones 区域列表或 cabinet 柜体信息');
+    validateLayoutFields(cab, '');
+    validateCells(data.cells, '');
+    if (data.hidden != null && (typeof data.hidden !== 'object' || Array.isArray(data.hidden))) {
+      fail('hidden 暂存数据格式不正确');
+    }
+    return true;
+  }
+
+  /* ---------------- 5. 元素引用 ---------------- */
+  const els = {
+    grid: $('#grid'),
+    zoneEmpty: $('#zoneEmpty'),
+    btnZoneEmptyCta: $('#btnZoneEmptyCta'),
+    stats: $('#stats'),
+    zoneTitle: $('#zoneTitle'),
+    brandMeta: $('#brandMeta'),
+    zonesPanel: $('#zonesPanel'),
+    zonesList: $('#zonesList'),
+    zonesScrim: $('#zonesScrim'),
+    btnToggleZones: $('#btnToggleZones'),
+    btnAddZone: $('#btnAddZone'),
+    crossSearch: $('#crossSearch'),
+    crossToggleWrap: $('#crossToggleWrap'),
+    searchResults: $('#searchResults'),
+    settingsTitle: $('#settingsTitle'),
+    zoneDanger: $('#zoneDanger'),
+    btnCopyZone: $('#btnCopyZone'),
+    btnDeleteZone: $('#btnDeleteZone'),
+    sNote: $('#s-note'),
+    sLocation: $('#s-location'),
+    cabinetInner: $('#cabinetInner'),
+    zoomCtl: $('#zoomCtl'),
+    zoomRange: $('#zoomRange'),
+    zoomPct: $('#zoomPct'),
+    zoomHint: $('#zoomHint'),
+    search: $('#search'),
+    searchHint: $('#searchHint'),
+    clearSearch: $('#clearSearch'),
+    btnSettings: $('#btnSettings'),
+    btnExport: $('#btnExport'),
+    btnImport: $('#btnImport'),
+    fileInput: $('#fileInput'),
+    scrim: $('#scrim'),
+    drawer: $('#drawer'),
+    drawerTitle: $('#drawerTitle'),
+    drawerStatus: $('#drawerStatus'),
+    btnCloseDrawer: $('#btnCloseDrawer'),
+    cellForm: $('#cellForm'),
+    fName: $('#f-name'),
+    fCategory: $('#f-category'),
+    fModel: $('#f-model'),
+    fQty: $('#f-qty'),
+    fUnit: $('#f-unit'),
+    fMin: $('#f-min'),
+    fTime: $('#f-time'),
+    fNote: $('#f-note'),
+    btnMinus: $('#btnMinus'),
+    btnPlus: $('#btnPlus'),
+    btnClear: $('#btnClear'),
+    btnSave: $('#btnSave'),
+    settingsMask: $('#settingsMask'),
+    settingsForm: $('#settingsForm'),
+    btnCloseSettings: $('#btnCloseSettings'),
+    btnCancelSettings: $('#btnCancelSettings'),
+    btnApplySettings: $('#btnApplySettings'),
+    sName: $('#s-name'),
+    sTotal: $('#s-total'),
+    sMax: $('#s-max'),
+    totalHint: $('#totalHint'),
+    segBtns: document.querySelectorAll('.seg-btn'),
+    panelTotal: $('#panelTotal'),
+    panelCustom: $('#panelCustom'),
+    rowEditor: $('#rowEditor'),
+    btnAddRow: $('#btnAddRow'),
+    previewGrid: $('#previewGrid'),
+    previewMeta: $('#previewMeta'),
+    previewNote: $('#previewNote'),
+    toasts: $('#toasts')
+  };
+
+  const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+
+  /* ---------------- 6. 视图层 ---------------- */
+  const ui = { currentId: null, query: '', settingsOpen: false, zonesCollapsed: false, zonesDrawerOpen: false, zoomMode: 'fill', fixedW: 120 };
+
+  function renderStats() {
+    const st = Store.stats();
+    const warn = st.low + st.out;
+    els.stats.innerHTML =
+      '<div class="stat"><span class="stat-label">格数</span><b>' + st.total + '</b></div>' +
+      '<div class="stat"><span class="stat-label">已用</span><b>' + st.used + '</b></div>' +
+      '<div class="stat' + (warn ? ' warn' : '') + '"><span class="stat-label">预警</span><b>' + warn + '</b></div>';
+  }
+
+  function cellNode(id, cell) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.id = id;
+    const status = cellStatus(cell);
+    btn.className = 'cell state-' + status;
+
+    if (!cell) {
+      btn.setAttribute('aria-label', id + ' 空位，点击入库');
+      btn.title = id + ' · 空位';
+      btn.innerHTML =
+        '<span class="cell-top"><span class="cell-id">' + id + '</span><span class="cell-tag">空位</span></span>' +
+        '<span class="cell-empty">' + ICON_PLUS + '<span>点击入库</span></span>' +
+        '<span class="cell-level"><i style="width:0"></i></span>';
+      return btn;
+    }
+
+    const qty = Number(cell.qty) || 0;
+    const basis = Number(cell.minQty) > 0 ? Number(cell.minQty) : Math.max(qty, 1);
+    const ratio = Math.round(Math.min(1, qty / (basis * 2)) * 100);
+    const stateText = status === 'low' ? '低库存' : status === 'out' ? '缺料' : '';
+
+    btn.setAttribute('aria-label',
+      id + ' ' + cell.name + '，剩余 ' + fmtNum(qty) + ' ' + cell.unit + '，状态 ' + STATUS_TEXT[status] + '，点击查看');
+    btn.title = id + ' · ' + cell.name +
+      (cell.model ? ' · ' + cell.model : '') +
+      ' · ' + fmtNum(qty) + ' ' + cell.unit + ' · ' + STATUS_TEXT[status];
+    btn.innerHTML =
+      '<span class="cell-top">' +
+        '<span class="cell-id">' + id + '</span>' +
+        '<span class="cell-tag">' + esc(cell.category) + '</span>' +
+      '</span>' +
+      '<span class="cell-main">' +
+        '<span class="cell-name">' + esc(cell.name) + '</span>' +
+        '<span class="cell-model">' + esc(cell.model || '—') + '</span>' +
+      '</span>' +
+      '<span class="cell-foot">' +
+        '<span class="cell-qty">' + fmtNum(qty) + '<em>' + esc(cell.unit) + '</em></span>' +
+        (stateText ? '<span class="cell-state-text">' + stateText + '</span>' : '') +
+      '</span>' +
+      '<span class="cell-level"><i style="width:' + ratio + '%"></i></span>';
+    return btn;
+  }
+
+  function renderGrid() {
+    const zone = Store.zone;
+    const counts = zone.rowCounts;
+    const maxCols = Math.max(1, maxColsOf(counts));
+    els.grid.style.setProperty('--cols', maxCols);
+    const frag = document.createDocumentFragment();
+
+    /* 左上角占位（行标列与列标行交叉处，不遮挡内容） */
+    const corner = document.createElement('span');
+    corner.className = 'axis-corner';
+    corner.setAttribute('aria-hidden', 'true');
+    frag.appendChild(corner);
+
+    /* 顶部列标：始终按最大列数铺满，某排格数不足时对应位置仍保留列标 */
+    for (let c = 0; c < maxCols; c++) {
+      const col = document.createElement('span');
+      col.className = 'axis-label axis-col';
+      col.dataset.col = String(c + 1);
+      col.textContent = String(c + 1);
+      frag.appendChild(col);
+    }
+
+    counts.forEach((n, r) => {
+      const row = document.createElement('span');
+      row.className = 'axis-label axis-row';
+      row.dataset.row = String(r + 1);
+      row.textContent = rowLabel(r);
+      frag.appendChild(row);
+      for (let c = 0; c < maxCols; c++) {
+        if (c < n) {
+          const id = labelAt(r, c);
+          frag.appendChild(cellNode(id, Store.getCell(id)));
+        } else {
+          const gap = document.createElement('span');
+          gap.className = 'cell-gap';
+          gap.setAttribute('aria-hidden', 'true');
+          frag.appendChild(gap);
+        }
+      }
+    });
+
+    els.grid.innerHTML = '';
+    els.grid.appendChild(frag);
+    syncAxisHighlight();
+  }
+
+  /* 格位编号 → 行列：3-4 = 第 3 行第 4 列（兼容旧键 A1） */
+  function axisOf(id) {
+    const key = toCellKey(id);
+    if (!key) return null;
+    const parts = key.split('-');
+    return { row: parseInt(parts[0], 10), col: parseInt(parts[1], 10) };
+  }
+
+  function cellPosText(id) {
+    const pos = axisOf(id);
+    return pos ? '（第 ' + pos.row + ' 行第 ' + pos.col + ' 列）' : '';
+  }
+
+  /* 选中格 / 搜索命中格对应的行标、列标同步高亮 */
+  function syncAxisHighlight() {
+    const rows = new Set();
+    const cols = new Set();
+    els.grid.querySelectorAll('.cell.hit, .cell.locate').forEach(function (node) {
+      const pos = axisOf(node.dataset.id);
+      if (pos) { rows.add(pos.row); cols.add(pos.col); }
+    });
+    if (ui.currentId) {
+      const pos = axisOf(ui.currentId);
+      if (pos) { rows.add(pos.row); cols.add(pos.col); }
+    }
+    els.grid.querySelectorAll('.axis-row').forEach(function (node) {
+      node.classList.toggle('hit', rows.has(parseInt(node.dataset.row, 10)));
+    });
+    els.grid.querySelectorAll('.axis-col').forEach(function (node) {
+      node.classList.toggle('hit', cols.has(parseInt(node.dataset.col, 10)));
+    });
+  }
+
+  /* ---------------- 6.5 紧凑网格：等比格 + 固定间距 + 左上对齐 ---------------- */
+  const ZOOM_BASE_W = 96;    // 基准格宽
+  const ZOOM_BASE_H = 88;    // 基准格高（宽高比约 1.09，始终等比）
+  const ZOOM_MIN_W = 76;     // 可读性下限：格宽
+  const ZOOM_MIN_H = 56;     // 可读性下限：格高
+  const ZOOM_MAX_W = 120;    // 格宽上限
+  const ZOOM_MAX_H = 110;    // 格高上限
+  const FIXED_MIN_W = 76;    // 固定尺寸档：滑块下限
+  const FIXED_MAX_W = 220;   // 固定尺寸档：滑块上限
+  const ZOOM_MIN_SCALE = Math.max(ZOOM_MIN_W / ZOOM_BASE_W, ZOOM_MIN_H / ZOOM_BASE_H);
+  const ZOOM_MAX_SCALE = Math.min(ZOOM_MAX_W / ZOOM_BASE_W, ZOOM_MAX_H / ZOOM_BASE_H);
+  let zoomRaf = 0;
+
+  /* 按格宽 / 格高决定信息层级：120×110 为 lg（编号+名称+型号+数量+状态） */
+  function zoomBandOf(w, h) {
+    if (w >= 108 && h >= 100) return 'lg';
+    if (w >= 88 && h >= 78) return 'md';
+    if (w >= 64 && h >= 52) return 'sm';
+    return 'xs';
+  }
+
+  function setZoomTip(on) {
+    if (!els.zoomHint) return;
+    if (els.zoomHint.classList.contains('show') === on) return;
+    els.zoomHint.textContent = on ? '已达最小可读尺寸，可滚动查看' : '';
+    els.zoomHint.classList.toggle('show', on);
+  }
+
+  /* 紧凑网格：格子等比缩放并封顶 120×110；间距固定（桌面 12 / 窄屏 6）；
+     网格左上对齐，剩余空间留在右下角，不再摊进间距、不再居中
+     总量 = 左侧行标 + 列数×格宽 + 列数×间距，纵向同理 */
+  function applyZoom() {
+    if (!Store.state || !els.cabinetInner) return;
+    const inner = els.cabinetInner;
+    const grid = els.grid;
+    const zone = Store.zone;
+    const cols = Math.max(1, maxColsOf(zone.rowCounts));
+    const rows = Math.max(1, zone.rowCounts.length);
+    const narrow = window.matchMedia('(max-width: 720px)').matches;
+    const labelW = narrow ? 28 : 32;
+    const labelH = 22;
+    const gap = narrow ? 6 : 12;   // 固定间距档位，不随剩余空间变化
+
+    const cs = getComputedStyle(inner);
+    const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const availW = Math.max(120, inner.clientWidth - padX);
+    const availH = Math.max(120, inner.clientHeight - padY);
+
+    let cellW; let cellH;
+
+    if (ui.zoomMode === 'fixed') {
+      cellW = Math.min(FIXED_MAX_W, Math.max(FIXED_MIN_W, Math.floor(ui.fixedW)));
+      cellH = Math.max(ZOOM_MIN_H, Math.floor(cellW * ZOOM_BASE_H / ZOOM_BASE_W));
+    } else {
+      /* 等比缩放：可用区域内能放下的最大比例，夹在可读下限与 120×110 上限之间 */
+      const fitW = (availW - labelW - cols * gap) / (cols * ZOOM_BASE_W);
+      const fitH = (availH - labelH - rows * gap) / (rows * ZOOM_BASE_H);
+      const s = Math.min(Math.max(ZOOM_MIN_SCALE, Math.min(fitW, fitH)), ZOOM_MAX_SCALE);
+      cellW = Math.max(ZOOM_MIN_W, Math.floor(ZOOM_BASE_W * s));
+      cellH = Math.max(ZOOM_MIN_H, Math.floor(ZOOM_BASE_H * s));
+    }
+
+    inner.style.setProperty('--cell-w', cellW + 'px');
+    inner.style.setProperty('--cell-h', cellH + 'px');
+    inner.style.setProperty('--cell-gap-x', gap + 'px');
+    inner.style.setProperty('--cell-gap-y', gap + 'px');
+    inner.style.setProperty('--rlabel', (narrow ? 28 : 32) + 'px');
+    inner.style.setProperty('--clabel', labelH + 'px');
+    /* 左上对齐：清掉旧的居中留白 */
+    grid.style.marginLeft = '0px';
+    grid.style.marginTop = '0px';
+
+    const needW = labelW + cols * cellW + cols * gap;
+    const needH = labelH + rows * cellH + rows * gap;
+    inner.dataset.band = zoomBandOf(cellW, cellH);
+    setZoomTip(needW > availW + 1 || needH > availH + 1);
+  }
+
+  function renderZoomCtl() {
+    els.zoomCtl.dataset.mode = ui.zoomMode;
+    els.zoomCtl.querySelectorAll('.zoom-btn').forEach(function (btn) {
+      const on = btn.dataset.zoom === ui.zoomMode;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    els.zoomRange.value = String(ui.fixedW);
+    els.zoomPct.textContent = ui.fixedW + 'px';
+  }
+
+  function saveZoomPref() {
+    try {
+      localStorage.setItem(ZOOM_KEY, JSON.stringify({ mode: ui.zoomMode, w: ui.fixedW }));
+    } catch (err) { /* 忽略写入失败 */ }
+  }
+
+  function loadZoomPref() {
+    try {
+      const raw = localStorage.getItem(ZOOM_KEY);
+      if (!raw) return;
+      const pref = JSON.parse(raw) || {};
+      const w = Number(pref.w);
+      if (Number.isFinite(w)) ui.fixedW = Math.min(FIXED_MAX_W, Math.max(FIXED_MIN_W, Math.round(w)));
+      if (pref.mode === 'fixed') {
+        ui.zoomMode = 'fixed';
+        return;
+      }
+      /* 旧的 fit / 100% / custom 记录统一迁移为默认的按比例适配 */
+      ui.zoomMode = 'fill';
+      if (pref.mode !== 'fill') saveZoomPref();
+    } catch (err) { /* 忽略损坏的本地设置 */ }
+  }
+
+  function setZoomMode(mode) {
+    if (mode !== 'fill' && mode !== 'fixed') return;
+    ui.zoomMode = mode;
+    saveZoomPref();
+    renderZoomCtl();
+    applyZoom();
+  }
+
+  function scheduleApplyZoom() {
+    if (zoomRaf) return;
+    zoomRaf = requestAnimationFrame(function () {
+      zoomRaf = 0;
+      applyZoom();
+    });
+  }
+
+  /* 窗口/侧边栏尺寸变化结束后再收敛一次，避免在过渡中间值上定尺寸 */
+  let zoomSettleTimer = 0;
+  function settleApplyZoom() {
+    clearTimeout(zoomSettleTimer);
+    zoomSettleTimer = setTimeout(applyZoom, 340);
+  }
+
+  function hideSearchResults() {
+    els.searchResults.classList.remove('show');
+    els.searchResults.innerHTML = '';
+  }
+
+  function renderSearchResults(hits) {
+    if (!hits.length) {
+      hideSearchResults();
+      return;
+    }
+    els.searchResults.innerHTML = hits.slice(0, 40).map((h) =>
+      '<button type="button" class="search-result" data-zone="' + esc(h.zoneId) + '" data-id="' + esc(h.id) + '">' +
+        '<span class="sr-zone">' + esc(h.zoneName) + '</span>' +
+        '<span class="sr-id">' + esc(h.id) + '</span>' +
+        '<span class="sr-name">' + esc(h.cell.name) + '</span>' +
+        '<span class="sr-qty">' + fmtNum(h.cell.qty) + ' ' + esc(h.cell.unit) + '</span>' +
+      '</button>').join('');
+    els.searchResults.classList.add('show');
+  }
+
+  function refreshSearch() {
+    const q = els.search.value.trim();
+    ui.query = q;
+    els.clearSearch.classList.toggle('show', !!q);
+    const cross = els.crossSearch.checked;
+    els.crossToggleWrap.classList.toggle('on', cross);
+    const nodes = els.grid.querySelectorAll('.cell');
+
+    if (!q) {
+      nodes.forEach((node) => node.classList.remove('hit', 'dim'));
+      els.searchHint.textContent = '';
+      els.searchHint.classList.remove('warn');
+      hideSearchResults();
+      syncAxisHighlight();
+      return;
+    }
+
+    const hits = Store.search(q);
+    const hitIds = new Set(hits.map((h) => h.id));
+    nodes.forEach((node) => {
+      const isHit = hitIds.has(node.dataset.id);
+      node.classList.toggle('hit', isHit);
+      node.classList.toggle('dim', cross ? false : !isHit);
+    });
+
+    if (cross) {
+      const all = Store.searchAll(q);
+      renderSearchResults(all);
+      els.searchHint.classList.toggle('warn', !all.length);
+      if (all.length) {
+        els.searchHint.innerHTML = '跨 <b>' + Store.state.zones.length + '</b> 个区域找到 <b>' +
+          all.length + '</b> 个匹配 · 点击结果跳转';
+      } else {
+        els.searchHint.textContent = '所有区域都没有匹配的物料，试试其他名称、型号或类别';
+      }
+      syncAxisHighlight();
+      return;
+    }
+
+    hideSearchResults();
+    if (hits.length) {
+      els.searchHint.innerHTML = '找到 <b>' + hits.length + '</b> 个匹配格位，首个为 <b>' +
+        esc(hits[0].id) + '</b>' + cellPosText(hits[0].id) + ' ' + esc(hits[0].cell.name) +
+        ' · 按回车定位';
+      els.searchHint.classList.remove('warn');
+    } else {
+      els.searchHint.textContent = '没有找到匹配的物料，试试其他名称、型号或类别';
+      els.searchHint.classList.add('warn');
+    }
+    syncAxisHighlight();
+  }
+
+  function renderZones() {
+    els.zonesList.innerHTML = Store.state.zones.map((zone, i) => {
+      const total = totalOf(zone.rowCounts);
+      const used = Object.keys(zone.cells).length;
+      const active = zone.id === Store.state.activeZoneId;
+      return '<div class="zone-item' + (active ? ' active' : '') + '" data-zone="' + esc(zone.id) +
+        '" role="option" tabindex="0" aria-selected="' + (active ? 'true' : 'false') +
+        '" title="' + esc(zone.name) + '">' +
+        '<span class="zone-mark">' + esc(zone.name.slice(0, 1) || '柜') + '</span>' +
+        '<span class="zone-body">' +
+          '<span class="zone-name">' + esc(zone.name) + '</span>' +
+          '<span class="zone-meta">' + total + ' 格 · 已用 ' + used + '</span>' +
+        '</span>' +
+        '<span class="zone-tools">' +
+          '<button type="button" class="zone-act" data-act="up" aria-label="上移" ' + (i ? '' : 'disabled') + '>↑</button>' +
+          '<button type="button" class="zone-act" data-act="down" aria-label="下移" ' + (i < Store.state.zones.length - 1 ? '' : 'disabled') + '>↓</button>' +
+          '<button type="button" class="zone-act" data-act="edit" aria-label="编辑区域">✎</button>' +
+        '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  function refresh() {
+    const zone = Store.zone;
+    const counts = zone.rowCounts;
+    const total = totalOf(counts);
+    const maxCols = Math.max(1, maxColsOf(counts));
+    els.zoneTitle.textContent = zone.name;
+    document.title = zone.name + ' · 物料柜管理';
+    els.brandMeta.textContent =
+      (isUniform(counts)
+        ? counts.length + ' × ' + maxCols
+        : counts.length + ' 排不等宽 · 最宽 ' + maxCols + ' 格') +
+      ' · 共 ' + total + ' 格' + (zone.location ? ' · ' + zone.location : '');
+    renderStats();
+    renderGrid();
+    els.zoneEmpty.hidden = Object.keys(zone.cells).length > 0;
+    renderZones();
+    refreshSearch();
+    applyZoom();
+  }
+
+  function updateBodyLock() {
+    const locked = els.drawer.classList.contains('open') ||
+      els.settingsMask.classList.contains('show');
+    document.body.classList.toggle('locked', locked);
+  }
+
+  function toast(message, kind) {
+    const node = document.createElement('div');
+    node.className = 'toast' + (kind ? ' ' + kind : '');
+    node.textContent = message;
+    els.toasts.appendChild(node);
+    setTimeout(() => {
+      node.style.transition = 'opacity .25s, transform .25s';
+      node.style.opacity = '0';
+      node.style.transform = 'translateY(6px)';
+      setTimeout(() => node.remove(), 260);
+    }, 2600);
+  }
+
+  /* ---------------- 7. 抽屉（格位详情） ---------------- */
+  function updateDrawerStatus(cell) {
+    const status = cellStatus(cell);
+    els.drawerStatus.textContent = STATUS_TEXT[status];
+    els.drawerStatus.className = 'badge badge-' + status;
+  }
+
+  function fillForm(id) {
+    const cell = Store.getCell(id);
+    els.fName.value = cell ? cell.name : '';
+    els.fCategory.value = cell ? cell.category : '电阻';
+    els.fModel.value = cell ? cell.model : '';
+    els.fQty.value = cell ? cell.qty : '';
+    els.fUnit.value = cell ? cell.unit : 'pcs';
+    els.fMin.value = cell ? cell.minQty : 0;
+    els.fNote.value = cell ? cell.note : '';
+    els.fTime.textContent = cell ? fmtTime(cell.updatedAt) : '尚未入库';
+    updateDrawerStatus(cell);
+  }
+
+  function openDrawer(id) {
+    if (!Store.inRange(id)) return;
+    ui.currentId = id;
+    els.drawerTitle.textContent = Store.zone.name + ' · ' + id + cellPosText(id);
+    fillForm(id);
+    els.drawer.classList.add('open');
+    els.drawer.setAttribute('aria-hidden', 'false');
+    els.scrim.classList.add('show');
+    updateBodyLock();
+    if (window.matchMedia('(min-width: 721px)').matches) {
+      setTimeout(() => { try { els.fName.focus(); } catch (err) {} }, 280);
+    }
+    syncAxisHighlight();
+  }
+
+  function closeDrawer() {
+    ui.currentId = null;
+    els.drawer.classList.remove('open');
+    els.drawer.setAttribute('aria-hidden', 'true');
+    els.scrim.classList.remove('show');
+    updateBodyLock();
+    syncAxisHighlight();
+  }
+
+  /* ---------------- 8. 交互动作 ---------------- */
+  function saveForm() {
+    const id = ui.currentId;
+    if (!id) return;
+    const name = els.fName.value.trim();
+    if (!name) {
+      toast('请先填写物料名称', 'warn');
+      els.fName.focus();
+      return;
+    }
+    const cell = {
+      name: name.slice(0, 40),
+      category: els.fCategory.value,
+      model: els.fModel.value.trim().slice(0, 40),
+      qty: parseQty(els.fQty.value, 0),
+      unit: els.fUnit.value.trim().slice(0, 6) || 'pcs',
+      minQty: parseQty(els.fMin.value, 0),
+      note: els.fNote.value.trim().slice(0, 120),
+      updatedAt: new Date().toISOString()
+    };
+    Store.setCell(id, cell);
+    notifyChanged(id, cell);
+    refresh();
+    els.fTime.textContent = fmtTime(cell.updatedAt);
+    els.fQty.value = cell.qty;
+    updateDrawerStatus(cell);
+    toast(id + ' 已保存 · ' + cell.name, 'ok');
+  }
+
+  function clearCurrentCell() {
+    const id = ui.currentId;
+    if (!id) return;
+    if (!Store.getCell(id)) {
+      toast('该格已经是空位了', 'warn');
+      return;
+    }
+    if (!window.confirm('确认清空 ' + id + ' 格的物料？此操作不可撤销。')) return;
+    Store.clearCell(id);
+    notifyChanged(id, null);
+    refresh();
+    closeDrawer();
+    toast(id + ' 已清空', 'ok');
+  }
+
+  function stepQty(delta) {
+    const id = ui.currentId;
+    if (!id) return;
+    const cell = Store.getCell(id);
+    if (!cell) {
+      toast('该格暂无物料，请填写信息并保存后再出入库', 'warn');
+      return;
+    }
+    cell.qty = Math.max(0, round2((Number(cell.qty) || 0) + delta));
+    cell.updatedAt = new Date().toISOString();
+    Store.setCell(id, cell);
+    notifyChanged(id, cell);
+    els.fQty.value = cell.qty;
+    els.fTime.textContent = fmtTime(cell.updatedAt);
+    updateDrawerStatus(cell);
+    refresh();
+    toast((delta > 0 ? '入库 +' : '出库 -') + Math.abs(delta) + ' ' + cell.unit +
+      ' · ' + id + ' 剩余 ' + fmtNum(cell.qty), delta > 0 ? 'ok' : '');
+  }
+
+  function locateCell(id) {
+    const target = els.grid.querySelector('.cell[data-id="' + id + '"]');
+    if (!target) {
+      toast('格位 ' + id + ' 不在当前布局中', 'warn');
+      return;
+    }
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.remove('locate');
+    void target.offsetWidth;
+    target.classList.add('locate');
+    syncAxisHighlight();
+    setTimeout(() => {
+      target.classList.remove('locate');
+      syncAxisHighlight();
+    }, 2000);
+  }
+
+  function jumpToZoneCell(zoneId, id) {
+    if (Store.state.activeZoneId !== zoneId) {
+      Store.setActiveZone(zoneId);
+      closeDrawer();
+      refresh();
+    }
+    if (isMobileZones()) closeZonesDrawer();
+    locateCell(id);
+    toast('已定位：' + Store.zone.name + ' · ' + id + cellPosText(id), 'ok');
+  }
+
+  function locateFirst() {
+    if (els.crossSearch.checked) {
+      const all = Store.searchAll(els.search.value);
+      if (!all.length) {
+        toast('所有区域都没有匹配的格位', 'warn');
+        return;
+      }
+      jumpToZoneCell(all[0].zoneId, all[0].id);
+      return;
+    }
+    const hits = Store.search(els.search.value);
+    if (!hits.length) {
+      toast('没有匹配的格位', 'warn');
+      return;
+    }
+    locateCell(hits[0].id);
+    toast('已定位：' + Store.zone.name + ' · ' + hits[0].id + cellPosText(hits[0].id), 'ok');
+  }
+
+  /* ---- 区域侧边栏 ---- */
+  const isMobileZones = () => window.matchMedia('(max-width: 860px)').matches;
+
+  function setZonesCollapsed(collapsed) {
+    ui.zonesCollapsed = collapsed;
+    els.zonesPanel.classList.toggle('collapsed', collapsed);
+    document.body.classList.toggle('zones-collapsed', collapsed);
+    els.btnToggleZones.textContent = collapsed ? '»' : '«';
+    els.btnToggleZones.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    els.btnToggleZones.setAttribute('aria-label', collapsed ? '展开区域侧边栏' : '折叠区域侧边栏');
+    settleApplyZoom();
+  }
+
+  function openZonesDrawer() {
+    els.zonesPanel.classList.remove('collapsed');
+    document.body.classList.remove('zones-collapsed');
+    els.zonesPanel.classList.add('mobile-open');
+    els.zonesScrim.classList.add('show');
+    els.btnToggleZones.textContent = '«';
+    ui.zonesDrawerOpen = true;
+    ui.zonesCollapsed = false;
+  }
+
+  function closeZonesDrawer() {
+    els.zonesPanel.classList.remove('mobile-open');
+    els.zonesScrim.classList.remove('show');
+    ui.zonesDrawerOpen = false;
+    if (isMobileZones()) {
+      els.zonesPanel.classList.add('collapsed');
+      document.body.classList.add('zones-collapsed');
+      els.btnToggleZones.textContent = '»';
+    }
+  }
+
+  function toggleZones() {
+    if (isMobileZones()) {
+      if (els.zonesPanel.classList.contains('mobile-open')) closeZonesDrawer();
+      else openZonesDrawer();
+      return;
+    }
+    setZonesCollapsed(!ui.zonesCollapsed);
+  }
+
+  function switchZone(id) {
+    if (!id) return;
+    if (id === Store.state.activeZoneId) {
+      if (isMobileZones()) closeZonesDrawer();
+      return;
+    }
+    if (!Store.setActiveZone(id)) return;
+    closeDrawer();
+    refresh();
+    if (isMobileZones()) closeZonesDrawer();
+    toast('已切换到「' + Store.zone.name + '」', 'ok');
+  }
+
+  function notifyChanged(id, cell) {
+    const api = window.MaterialCabinet;
+    if (api && typeof api.onCellChanged === 'function') {
+      try {
+        api.onCellChanged(id, cell ? Object.assign({}, cell) : null);
+      } catch (err) {
+        console.warn('[物料柜] onCellChanged 回调异常', err);
+      }
+    }
+  }
+
+  /* ---------------- 9. 区域编辑器（新增 / 修改 / 复制 / 删除） ---------------- */
+  let draft = null;
+
+  function draftZone() {
+    if (draft && draft.zoneId) return Store.zoneById(draft.zoneId) || Store.zone;
+    return Store.zone;
+  }
+
+  function buildMaxOptions() {
+    let html = '<option value="auto">自动</option>';
+    for (let i = 1; i <= COLS_MAX; i++) html += '<option value="' + i + '">' + i + ' 格</option>';
+    els.sMax.innerHTML = html;
+  }
+
+  function syncTotal(commit) {
+    if (!draft) return;
+    const raw = parseInt(els.sTotal.value, 10);
+    if (!Number.isFinite(raw)) {
+      if (commit) els.sTotal.value = draft.total;
+      return;
+    }
+    const total = Math.min(TOTAL_MAX, Math.max(1, raw));
+    if (commit) els.sTotal.value = total;
+    draft.total = total;
+    let counts;
+    if (els.sMax.value === 'auto') {
+      counts = autoRowCounts(total);
+    } else {
+      const max = Math.min(COLS_MAX, Math.max(1, parseInt(els.sMax.value, 10) || 4));
+      counts = distribute(total, Math.ceil(total / max));
+    }
+    draft.rowCounts = counts;
+    els.totalHint.textContent = counts.length + ' 排 · 每排 ' + counts.join(' / ') + ' 格 · 共 ' + total + ' 格';
+    renderPreview();
+  }
+
+  function switchLayoutMode(mode) {
+    if (!draft) return;
+    draft.layoutMode = mode === 'custom' ? 'custom' : 'total';
+    els.segBtns.forEach((btn) => {
+      const on = btn.dataset.mode === draft.layoutMode;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    els.panelTotal.hidden = draft.layoutMode !== 'total';
+    els.panelCustom.hidden = draft.layoutMode !== 'custom';
+    if (draft.layoutMode === 'total') {
+      els.sTotal.value = draft.total;
+      syncTotal(false);
+      return;
+    }
+    if (!draft.rowCounts.length) draft.rowCounts = [4, 4, 4, 4, 4, 4];
+    els.sTotal.value = totalOf(draft.rowCounts);
+    renderRowEditor();
+    renderPreview();
+  }
+
+  function renderRowEditor() {
+    const counts = draft ? draft.rowCounts : [];
+    els.rowEditor.innerHTML = counts.map((n, i) => {
+      const last = i === counts.length - 1;
+      return '<div class="row-editor-item">' +
+        '<span class="row-letter">' + rowLabel(i) + '</span>' +
+        '<span class="row-title">第 ' + (i + 1) + ' 排</span>' +
+        '<input class="row-count" type="number" min="1" max="' + COLS_MAX + '" step="1" value="' + n +
+          '" data-row="' + i + '" aria-label="第 ' + (i + 1) + ' 排格数">' +
+        '<span class="row-unit">格</span>' +
+        (last && counts.length > 1
+          ? '<button type="button" class="row-del" data-del="' + i + '" aria-label="删除第 ' + (i + 1) + ' 排">×</button>'
+          : '<span class="row-del-space"></span>') +
+      '</div>';
+    }).join('');
+    els.btnAddRow.disabled = counts.length >= ROWS_MAX;
+  }
+
+  function addRow() {
+    if (!draft) return;
+    if (draft.rowCounts.length >= ROWS_MAX) {
+      toast('最多支持 ' + ROWS_MAX + ' 排', 'warn');
+      return;
+    }
+    const last = draft.rowCounts[draft.rowCounts.length - 1] || 4;
+    draft.rowCounts.push(last);
+    els.sTotal.value = totalOf(draft.rowCounts);
+    renderRowEditor();
+    renderPreview();
+  }
+
+  function onRowInput(event) {
+    if (!draft) return;
+    const input = event.target.closest('.row-count');
+    if (!input) return;
+    const i = parseInt(input.dataset.row, 10);
+    const v = parseInt(input.value, 10);
+    if (!Number.isInteger(v) || v < 1 || v > COLS_MAX) return;
+    draft.rowCounts[i] = v;
+    els.sTotal.value = totalOf(draft.rowCounts);
+    renderPreview();
+  }
+
+  function onRowChange(event) {
+    if (!draft) return;
+    const input = event.target.closest('.row-count');
+    if (!input) return;
+    const i = parseInt(input.dataset.row, 10);
+    const v = clampInt(input.value, 1, COLS_MAX, draft.rowCounts[i]);
+    draft.rowCounts[i] = v;
+    input.value = v;
+    els.sTotal.value = totalOf(draft.rowCounts);
+    renderPreview();
+  }
+
+  function onRowEditorClick(event) {
+    if (!draft) return;
+    const btn = event.target.closest('[data-del]');
+    if (!btn || draft.rowCounts.length <= 1) return;
+    draft.rowCounts.pop();
+    els.sTotal.value = totalOf(draft.rowCounts);
+    renderRowEditor();
+    renderPreview();
+  }
+
+  function renderPreview() {
+    if (!draft) return;
+    const counts = draft.rowCounts;
+    const maxCols = Math.max(1, maxColsOf(counts));
+    els.previewGrid.style.setProperty('--cols', maxCols);
+    els.previewGrid.classList.toggle('dense', maxCols >= 9);
+
+    const existing = draft.kind === 'edit' ? draftZone() : null;
+    const prevValid = existing ? new Set(Store.zoneLabels(existing)) : new Set();
+    const cells = existing ? existing.cells : {};
+    const hidden = existing ? existing.hidden : {};
+    let html = '';
+    counts.forEach((n, r) => {
+      for (let c = 0; c < maxCols; c++) {
+        if (c >= n) {
+          html += '<span class="preview-gap"></span>';
+          continue;
+        }
+        const id = labelAt(r, c);
+        const cell = cells[id];
+        const restored = !cell && hidden[id];
+        html += '<span class="preview-cell state-' + cellStatus(cell) + (restored ? ' restore' : '') + '">' +
+          id + '</span>';
+      }
+    });
+    els.previewGrid.innerHTML = html;
+    els.previewMeta.textContent = counts.length + ' 排 · 最宽 ' + maxCols + ' 格 · 共 ' + totalOf(counts) + ' 格';
+
+    const nextValid = new Set();
+    counts.forEach((n, r) => {
+      for (let c = 0; c < n; c++) nextValid.add(labelAt(r, c));
+    });
+    let added = 0;
+    nextValid.forEach((id) => { if (!prevValid.has(id)) added++; });
+    let kept = 0;
+    let stashed = 0;
+    Object.keys(cells).forEach((id) => {
+      if (nextValid.has(id)) kept++;
+      else stashed++;
+    });
+    let restored = 0;
+    Object.keys(hidden).forEach((id) => { if (nextValid.has(id)) restored++; });
+    let note = '保留 <b>' + kept + '</b> · 新增空位 <b>' + added + '</b>';
+    if (restored) note += ' · 恢复暂存 <b>' + restored + '</b>';
+    if (stashed) note += ' · <span class="warn">暂存移除 ' + stashed + '</span>';
+    els.previewNote.innerHTML = note;
+  }
+
+  function openZoneEditor(kind, zoneId) {
+    closeDrawer();
+    if (isMobileZones()) closeZonesDrawer();
+    const editing = kind === 'edit';
+    const zone = editing ? Store.zoneById(zoneId) : null;
+    if (editing && !zone) return;
+    const counts = zone ? zone.rowCounts.slice() : [4, 4, 4, 4, 4, 4];
+    draft = {
+      kind: editing ? 'edit' : 'create',
+      zoneId: zone ? zone.id : null,
+      layoutMode: zone && (zone.layoutMode === 'custom' || !isUniform(counts)) ? 'custom' : 'total',
+      total: totalOf(counts),
+      rowCounts: counts,
+      name: zone ? zone.name : '',
+      note: zone ? zone.note : '',
+      location: zone ? zone.location : ''
+    };
+    els.settingsTitle.textContent = editing ? '区域设置' : '新增区域';
+    els.btnApplySettings.textContent = editing ? '应用布局' : '创建区域';
+    els.zoneDanger.hidden = !editing;
+    els.sName.value = draft.name;
+    els.sNote.value = draft.note;
+    els.sLocation.value = draft.location;
+    buildMaxOptions();
+    els.sTotal.value = draft.total;
+    els.sMax.value = draft.layoutMode === 'total' ? String(Math.max(1, maxColsOf(counts))) : 'auto';
+    switchLayoutMode(draft.layoutMode);
+    els.settingsMask.classList.add('show');
+    ui.settingsOpen = true;
+    updateBodyLock();
+  }
+
+  function closeSettings() {
+    els.settingsMask.classList.remove('show');
+    ui.settingsOpen = false;
+    draft = null;
+    updateBodyLock();
+  }
+
+  function applyZoneSettings() {
+    if (!draft) return;
+    if (draft.layoutMode === 'total') syncTotal(true);
+    if (!draft.rowCounts.length) draft.rowCounts = [4];
+    const name = els.sName.value.trim().slice(0, 30) ||
+      (draft.kind === 'create' ? '区域 ' + (Store.state.zones.length + 1) : Store.zone.name);
+    const note = els.sNote.value.trim().slice(0, 80);
+    const location = els.sLocation.value.trim().slice(0, 60);
+    const kind = draft.kind;
+    const zoneId = draft.zoneId;
+    const rowCounts = draft.rowCounts.slice();
+    const layoutMode = draft.layoutMode;
+    closeSettings();
+
+    if (kind === 'create') {
+      const zone = Store.addZone({ name, note, location, rowCounts, layoutMode });
+      refresh();
+      toast('已创建区域「' + zone.name + '」 · ' + rowCounts.length + ' 排 / ' + totalOf(rowCounts) + ' 格', 'ok');
+      return;
+    }
+
+    const result = Store.updateZone(zoneId, { name, note, location, rowCounts, layoutMode });
+    if (!result) return;
+    Store.setActiveZone(zoneId);
+    refresh();
+    if (ui.currentId && !Store.inRange(ui.currentId)) closeDrawer();
+    const parts = [];
+    if (result.stashed) parts.push(result.stashed + ' 个移除格位已暂存');
+    if (result.restored) parts.push(result.restored + ' 个暂存格位已恢复');
+    if (result.added) parts.push('新增 ' + result.added + ' 个空位');
+    toast('区域「' + Store.zone.name + '」已更新：' + rowCounts.length + ' 排 · ' + result.total + ' 格' +
+      (parts.length ? '，' + parts.join('，') : ''), result.stashed ? 'warn' : 'ok');
+  }
+
+  function copyZoneFromEditor() {
+    if (!draft || draft.kind !== 'edit') return;
+    const copy = Store.copyZone(draft.zoneId);
+    if (!copy) return;
+    closeSettings();
+    refresh();
+    toast('已复制为「' + copy.name + '」（布局与数据已同步）', 'ok');
+  }
+
+  function deleteZonePrompt() {
+    if (!draft || draft.kind !== 'edit') return;
+    const zone = Store.zoneById(draft.zoneId);
+    if (!zone) return;
+    if (Store.state.zones.length <= 1) {
+      toast('至少保留一个区域，无法删除', 'warn');
+      return;
+    }
+    const used = Object.keys(zone.cells).length;
+    if (!window.confirm('删除区域「' + zone.name + '」？\n\n该区域 ' + used +
+      ' 个格位的物料数据将不可恢复，导出的旧备份也无法找回。')) return;
+    Store.removeZone(zone.id);
+    closeSettings();
+    refresh();
+    toast('已删除区域「' + zone.name + '」', 'warn');
+  }
+
+  /* ---------------- 10. 备份：导出 / 导入 ---------------- */
+  function downloadBackup() {
+    const data = Store.backup();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const d = new Date();
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '物料柜-全部区域-备份-' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) +
+      '-' + pad2(d.getHours()) + pad2(d.getMinutes()) + '.json';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+    const count = data.zones.reduce((n, z) => n + Object.keys(z.cells).length, 0);
+    toast('已导出 ' + data.zones.length + ' 个区域 / ' + count + ' 个格位', 'ok');
+  }
+
+  function triggerImport() {
+    els.fileInput.value = '';
+    els.fileInput.click();
+  }
+
+  function handleImportFile(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast('文件过大（上限 5MB）', 'err');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function () {
+      let data = null;
+      try {
+        data = JSON.parse(String(reader.result));
+      } catch (err) {
+        toast('JSON 解析失败，请检查备份文件格式', 'err');
+        return;
+      }
+      try {
+        validateBackup(data);
+      } catch (err) {
+        toast('导入失败：' + err.message, 'err');
+        return;
+      }
+      const zoneCount = Array.isArray(data.zones) ? data.zones.length : 1;
+      const count = Array.isArray(data.zones)
+        ? data.zones.reduce((n, z) => n + Object.keys((z && z.cells) || {}).length, 0)
+        : Object.keys(data.cells || {}).length;
+      if (!window.confirm('即将用备份覆盖当前全部区域（' + zoneCount + ' 个区域 / ' + count +
+        ' 个格位），是否继续？')) return;
+      try {
+        Store.replaceState(data);
+      } catch (err) {
+        toast('导入失败：' + err.message, 'err');
+        console.error('[物料柜] 导入迁移失败，当前数据未被覆盖', err);
+        return;
+      }
+      closeDrawer();
+      closeSettings();
+      refresh();
+      toast('导入成功：' + Store.state.zones.length + ' 个区域 / ' + count + ' 个格位', 'ok');
+    };
+    reader.onerror = function () { toast('文件读取失败', 'err'); };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  /* ---------------- 11. 事件绑定 ---------------- */
+  function bindEvents() {
+    els.grid.addEventListener('click', function (event) {
+      const node = event.target.closest('.cell');
+      if (node) openDrawer(node.dataset.id);
+    });
+
+    /* 缩放档位：按比例适配（默认）/ 固定尺寸（选择持久化，切区域后保持） */
+    els.zoomCtl.addEventListener('click', function (event) {
+      const btn = event.target.closest('.zoom-btn');
+      if (!btn) return;
+      setZoomMode(btn.dataset.zoom);
+    });
+    els.zoomRange.addEventListener('input', function () {
+      const w = Math.min(FIXED_MAX_W, Math.max(FIXED_MIN_W, parseInt(els.zoomRange.value, 10) || 120));
+      ui.fixedW = w;
+      ui.zoomMode = 'fixed';
+      els.zoomCtl.dataset.mode = 'fixed';
+      els.zoomPct.textContent = w + 'px';
+      els.zoomCtl.querySelectorAll('.zoom-btn').forEach(function (btn) {
+        const on = btn.dataset.zoom === 'fixed';
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      saveZoomPref();
+      scheduleApplyZoom();
+    });
+
+    els.search.addEventListener('input', refreshSearch);
+    els.search.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        locateFirst();
+      } else if (event.key === 'Escape') {
+        els.search.value = '';
+        refreshSearch();
+        els.search.blur();
+      }
+    });
+    els.clearSearch.addEventListener('click', function () {
+      els.search.value = '';
+      refreshSearch();
+      els.search.focus();
+    });
+
+    els.btnSettings.addEventListener('click', function () {
+      openZoneEditor('edit', Store.state.activeZoneId);
+    });
+    els.btnExport.addEventListener('click', downloadBackup);
+    els.btnImport.addEventListener('click', triggerImport);
+    els.fileInput.addEventListener('change', handleImportFile);
+
+    /* 区域侧边栏 */
+    els.btnToggleZones.addEventListener('click', toggleZones);
+    els.btnAddZone.addEventListener('click', function () { openZoneEditor('create'); });
+    els.btnZoneEmptyCta.addEventListener('click', function () { openDrawer('1-1'); });
+    els.zonesScrim.addEventListener('click', closeZonesDrawer);
+    els.zonesList.addEventListener('click', function (event) {
+      const act = event.target.closest('[data-act]');
+      if (act) {
+        const item = act.closest('.zone-item');
+        if (!item) return;
+        const zoneId = item.dataset.zone;
+        const kind = act.dataset.act;
+        if (kind === 'edit') {
+          openZoneEditor('edit', zoneId);
+          return;
+        }
+        if (Store.moveZone(zoneId, kind === 'up' ? -1 : 1)) {
+          refresh();
+          toast('区域顺序已更新', 'ok');
+        }
+        return;
+      }
+      const item = event.target.closest('.zone-item');
+      if (item) switchZone(item.dataset.zone);
+    });
+    els.zonesList.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (event.target.closest('[data-act]')) return;
+      const item = event.target.closest('.zone-item');
+      if (!item) return;
+      event.preventDefault();
+      switchZone(item.dataset.zone);
+    });
+
+    /* 跨区域搜索 */
+    els.crossSearch.addEventListener('change', refreshSearch);
+    els.searchResults.addEventListener('click', function (event) {
+      const btn = event.target.closest('.search-result');
+      if (!btn) return;
+      jumpToZoneCell(btn.dataset.zone, btn.dataset.id);
+    });
+
+    els.btnCloseDrawer.addEventListener('click', closeDrawer);
+    els.scrim.addEventListener('click', closeDrawer);
+
+    els.cellForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      saveForm();
+    });
+    els.btnSave.addEventListener('click', saveForm);
+    els.btnClear.addEventListener('click', clearCurrentCell);
+    els.btnMinus.addEventListener('click', function () { stepQty(-1); });
+    els.btnPlus.addEventListener('click', function () { stepQty(1); });
+
+    /* 数量输入框回车不提交整柜，直接保存 */
+    els.fQty.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        saveForm();
+      }
+    });
+
+    els.btnCloseSettings.addEventListener('click', closeSettings);
+    els.btnCancelSettings.addEventListener('click', closeSettings);
+    els.btnApplySettings.addEventListener('click', applyZoneSettings);
+    els.settingsForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      applyZoneSettings();
+    });
+    els.settingsMask.addEventListener('click', function (event) {
+      if (event.target === els.settingsMask) closeSettings();
+    });
+    els.segBtns.forEach(function (btn) {
+      btn.addEventListener('click', function () { switchLayoutMode(btn.dataset.mode); });
+    });
+    els.sTotal.addEventListener('input', function () { syncTotal(false); });
+    els.sTotal.addEventListener('change', function () { syncTotal(true); });
+    els.sMax.addEventListener('change', function () { syncTotal(false); });
+    els.btnAddRow.addEventListener('click', addRow);
+    els.rowEditor.addEventListener('click', onRowEditorClick);
+    els.rowEditor.addEventListener('input', onRowInput);
+    els.rowEditor.addEventListener('change', onRowChange);
+    els.btnCopyZone.addEventListener('click', copyZoneFromEditor);
+    els.btnDeleteZone.addEventListener('click', deleteZonePrompt);
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape') return;
+      if (ui.settingsOpen) {
+        closeSettings();
+        return;
+      }
+      if (els.drawer.classList.contains('open')) {
+        closeDrawer();
+        return;
+      }
+      if (els.zonesPanel.classList.contains('mobile-open')) closeZonesDrawer();
+    });
+  }
+
+  /* ---------------- 12. 初始化 ---------------- */
+  function checkStorage() {
+    try {
+      const k = '__cabinet_probe__';
+      localStorage.setItem(k, '1');
+      localStorage.removeItem(k);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  (function init() {
+    const seeded = Store.load();
+    if (Store.migrationError) {
+      toast('本地数据迁移失败：' + Store.migrationError.message + '（原始数据已保留，未被覆盖）', 'err');
+    } else if (Store.migration && Store.migration.ok) {
+      console.info('[物料柜] 坐标制式已迁移为「行-列」', Store.migration.rows);
+    }
+    els.fCategory.innerHTML = CATEGORIES.map(function (c) {
+      return '<option value="' + esc(c) + '">' + esc(c) + '</option>';
+    }).join('');
+    loadZoomPref();
+    renderZoomCtl();
+    setZonesCollapsed(isMobileZones());
+    refresh();
+    bindEvents();
+
+    let wasMobile = isMobileZones();
+    window.addEventListener('resize', function () {
+      const mobile = isMobileZones();
+      if (mobile === wasMobile) return;
+      wasMobile = mobile;
+      closeZonesDrawer();
+      setZonesCollapsed(mobile);
+    });
+
+    /* 尺寸变化只重算格子大小，不重建 DOM */
+    window.addEventListener('resize', function () {
+      scheduleApplyZoom();
+      settleApplyZoom();
+    });
+    if ('ResizeObserver' in window) {
+      let lastInnerW = -1;
+      new ResizeObserver(function (entries) {
+        const w = Math.round(entries[0].contentRect.width);
+        if (Math.abs(w - lastInnerW) < 1) return;
+        lastInnerW = w;
+        scheduleApplyZoom();
+      }).observe(els.cabinetInner);
+    }
+
+    // 对外暴露的扩展接口：硬件锁 / 扫码枪 / 外部数据源可复用同一套数据模型
+    window.MaterialCabinet = {
+      version: VERSION,
+      store: Store,
+      refresh: refresh,
+      openCell: openDrawer,
+      closePanel: closeDrawer,
+      search: function (q) { return Store.search(q); },
+      searchAll: function (q) { return Store.searchAll(q); },
+      zones: function () {
+        return Store.state.zones.map(function (z) {
+          return { id: z.id, name: z.name, rowCounts: z.rowCounts.slice(), used: Object.keys(z.cells).length };
+        });
+      },
+      onCellChanged: null
+    };
+
+    if (seeded) {
+      toast('已载入示例物料，点击柜格即可编辑', 'ok');
+    }
+    if (!checkStorage()) {
+      toast('当前环境无法写入 localStorage，修改仅在本次会话有效', 'warn');
+    }
+  })();
+})();
+</script>
+</body>
+</html>
