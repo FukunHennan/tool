@@ -1,0 +1,11 @@
+[package]
+name = "pctoolbox-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Binary (bincode) configuration storage for pctoolbox"
+
+[dependencies]
+bincode = "1"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"

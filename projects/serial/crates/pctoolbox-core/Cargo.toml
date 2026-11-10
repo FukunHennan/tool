@@ -1,0 +1,11 @@
+[package]
+name = "pctoolbox-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = "2"
+chrono = { workspace = true }
+pctoolbox-storage = { workspace = true }

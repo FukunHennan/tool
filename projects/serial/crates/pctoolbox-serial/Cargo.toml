@@ -1,0 +1,10 @@
+[package]
+name = "pctoolbox-serial"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pctoolbox-core = { workspace = true }
+serialport = "4"
+thiserror = "2"
