@@ -1,0 +1,18 @@
+{
+  "name": "pcb-material-cabinet",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "PCB 物料柜 · 可视化管理",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7",
+    "vitest": "^3.0.5"
+  }
+}

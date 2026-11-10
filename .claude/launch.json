@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "static-tool",
+      "name": "tool-platform",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "4173"],
-      "port": 4173
+      "runtimeArgs": ["serve.py"],
+      "port": 8765
     }
   ]
 }

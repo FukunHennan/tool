@@ -1,0 +1,36 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 出行地图 · 接口与存储测试
+        working-directory: projects/travel
+        run: |
+          python -m unittest discover -s tests -v
+          node --test tests/storage.test.cjs
+
+      - name: PCB 物料柜 · 单元测试与构建
+        working-directory: projects/pcb-cabinet
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: 串口助手 · 逻辑层测试
+        working-directory: projects/serial/web
+        run: node --test

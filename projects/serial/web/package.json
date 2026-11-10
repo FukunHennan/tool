@@ -1,0 +1,9 @@
+{
+  "name": "serial-web",
+  "private": true,
+  "type": "module",
+  "description": "串口助手（Web Serial）静态前端",
+  "scripts": {
+    "test": "node --test"
+  }
+}

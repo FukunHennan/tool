@@ -1,0 +1,23 @@
+# 依赖与构建产物
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+target/
+
+# 本地数据（每个工具的数据都留在本机）
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+
+# 日志与系统文件
+*.log
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
