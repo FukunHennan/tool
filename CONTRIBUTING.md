@@ -34,7 +34,13 @@ serve.py            单端口网关，把各工具挂到同一 origin
 
 每个工具都必须有能跑的测试。**纯逻辑与 DOM / 浏览器 API 分离**（参考 `projects/serial/web/format.js`），这样逻辑能被 `node --test` 覆盖，不必依赖浏览器。
 
-提交前本地跑一遍：
+提交前跑一遍（一条命令，与 CI 等价）：
+
+```powershell
+pwsh scripts\check.ps1
+```
+
+也可以手动执行：
 
 ```powershell
 cd projects\travel      ; python -m unittest discover -s tests -v ; node --test tests/storage.test.cjs
@@ -42,7 +48,7 @@ cd projects\pcb-cabinet ; npm test
 cd projects\serial\web  ; node --test
 ```
 
-CI（`.github/workflows/tests.yml`）跑的是同样三项，PR 必须绿。
+CI 定义在 `docs/ci/tests.yml`（暂未启用，原因见 `docs/ci/README.md`），步骤与 `scripts/check.ps1` 完全一致，PR 必须绿。
 
 ## 不要提交
 
