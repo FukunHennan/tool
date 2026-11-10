@@ -1,57 +1,73 @@
-# PC Toolbox (Rust)
+# 串口助手（Web Serial）
 
-> **当前平台工具是浏览器版**：`web/`（Web Serial），挂在 `http://127.0.0.1:8765/serial/`，与平台其他工具同一套技术栈（原生 HTML/CSS/JS）。
->
-> 本 README 描述的是**原生 Rust 版**（`crates/`），作为早期实现保留：功能更完整（串口 / 逻辑分析仪 / 插件三工作区），但需要 Rust + MSVC 工具链才能构建，且无法在浏览器里运行。
-
-PC Toolbox 的 Rust 原生重写：串口调试 + ESP 检测 + 逻辑分析仪，基于 egui 桌面 GUI。
-架构参照 TuiSerial（cargo workspace 多 crate 分层），核心逻辑与 UI/硬件解耦。
-
-## 架构
-
-```
-crates/
-├── pctoolbox-core       # 数据模型、会话状态机、消息日志、配置持久化（纯逻辑）
-├── pctoolbox-serial     # 传输抽象（DeviceTransport）+ serialport 实现 + Mock
-├── pctoolbox-esp        # ESP 芯片检测接口（协议实现待接入）
-├── pctoolbox-analyzer   # 逻辑分析仪波形数据模型（采集待接入）
-├── pctoolbox-plugin     # 数据拦截钩子管线（on_rx/on_tx/on_connect...）
-├── pctoolbox-ui         # egui 界面：串口 / 逻辑分析仪 / 插件工作区
-├── pctoolbox-cli        # 主程序入口（二进制名 pctoolbox）
-├── pctoolbox-eventbus   # 类型安全的事件总线（TypedEvent pub/sub）
-└── pctoolbox-storage    # 二进制配置存储（bincode）
-```
-
-**依赖方向**：`ui → plugin/analyzer/serial/eventbus/storage → core`，禁止反向依赖。
+浏览器里的串口调试工具，作为平台工具运行在 `/serial/` 下。原生 HTML/CSS/JS，没有构建步骤，没有后端。
 
 ## 运行
 
 ```powershell
-cargo run -p pctoolbox-cli
+# 仓库根目录
+python serve.py            # → http://127.0.0.1:8765/serial/
 ```
 
-测试：`cargo test --workspace`
+要求：**Chrome / Edge 89+**，并且通过 `localhost` 或 HTTPS 访问 —— Web Serial 需要安全上下文，`http://127.0.0.1:8765` 满足。
 
-## 关键设计（对齐 TuiSerial）
+首次使用时点左侧「选择串口…」授权设备，之后浏览器会记住该端口。
 
-- 配置锁定：连接后串口参数自动锁定，断开解锁（`core::session`）
-- 消息格式：`[时间] ◄ RX (  5 B) 48 65 6C 6C 6F`
-- 配置持久化：`%APPDATA%/pctoolbox/config.bin`（bincode 格式），启动自动加载
-- 日志环形缓冲：上限 10000 条
-- 事件总线：`EventBus<T>` 类型安全订阅/发布，用于进程内 UI 事件分发
-- 存储层：`BincodeStorage` 提供紧凑快速的二进制序列化
+## 结构
 
-## 新增特性
+```text
+web/
+├── index.html          三栏布局：配置 / 日志 / 行尾追加 + 底部发送区
+├── style.css           深色主题，与平台其他工具同一套色板
+├── app.js              Web Serial 接线、日志渲染、快捷键
+├── format.js           纯逻辑：十六进制解析、日志格式化、环形缓冲、过滤统计
+├── tests/format.test.js  13 个 node 单测（不依赖浏览器）
+└── package.json        type: module，让 node 直接跑 ESM 测试
+```
 
-| 模块 | 说明 |
-|---|---|
-| `pctoolbox-eventbus` | 泛型事件总线，支持任意类型的事件订阅和广播 |
-| `pctoolbox-storage` | 基于 bincode 的配置存储，替代原 JSON 格式 |
-| 测试覆盖 | 所有核心模块均有单元测试，总计 37 个测试通过 |
+`format.js` 刻意不碰 DOM 和 `navigator.serial`，所以能被 `node --test` 完整覆盖；`app.js` 只负责接线。
 
-## 后续计划
+## 功能
 
-- pctoolbox-esp：接入 esptool-rs 协议，实现 ROM Bootloader 只读识别
-- pctoolbox-analyzer：接入 rusb 采集（fx2lafw / Saleae 协议，24MHz 8CH）
-- pctoolbox-plugin：boa_engine JS 插件运行时
-- UI：多会话标签页、插件管理界面
+| 区域 | 内容 |
+| --- | --- |
+| 串口配置 | 端口授权、已授权端口自动恢复、波特率 300–4,000,000、数据位 5–8、校验 N/E/O、停止位 1/2、流控 无/硬件/软件；连接后整块锁定 |
+| 消息日志 | `[14:32:45.123] ◄ RX (    5 B) 48 65 6C`，RX 青 / TX 绿，HEX⇄TEXT、环形 10000 条、搜索、自动滚动、复制 |
+| 行尾追加 | 无 / `\n` / `\r` / `\r\n` / `\n\r` |
+| 发送 | ASCII 或 HEX，`↑↓` 切换，`Enter` 发送，`Esc` 清空，TX/RX 字节数与条数统计 |
+
+配置持久化在 `localStorage` 的 `serial-settings.v1`，键名带工具前缀。
+
+## 快捷键
+
+| 键 | 作用 |
+| --- | --- |
+| `o` | 连接 / 断开 |
+| `x` | HEX / TEXT 显示切换 |
+| `c` | 清空日志 |
+| `a` | 自动滚动开关 |
+| `n` | 循环行尾追加选项 |
+| `f` | 聚焦搜索框 |
+| `↑` / `↓` | 切换发送模式（HEX / ASCII） |
+| `Enter` | 发送（焦点在输入框时） |
+
+## 测试
+
+```powershell
+cd projects\serial\web
+node --test
+```
+
+## 已知限制
+
+- **仅 Chromium 内核**：Firefox / Safari 没有 Web Serial。
+- **拿不到 COM 名**：浏览器只暴露 USB VID:PID，界面不显示 `COM3`。
+- **生命周期跟随页面**：刷新、关闭标签即断开，无法像桌面程序常驻后台。
+- **不做高采样率采集 / ESP 烧录**：这些需要原生 USB 访问，不属于本工具范围。
+
+## 历史
+
+早期存在一版 Rust + egui 原生实现（串口 / 逻辑分析仪 / 插件三工作区），已从仓库移除。相关决策记录与旧 Web 版研究资料保留在 `docs/reference/`：
+
+- `docs/reference/refactor-to-rust.md` —— 当年从 Web 版迁移到 Rust 的决策记录
+- `docs/reference/old-web-version/` —— 旧 Web 版的 Saleae / fx2lafw 协议探针、ESP 检测与导出逻辑（ESP 与逻辑分析仪若要做，这是唯一参考）

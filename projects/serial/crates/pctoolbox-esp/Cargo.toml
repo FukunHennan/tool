@@ -1,9 +1,0 @@
-[package]
-name = "pctoolbox-esp"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-pctoolbox-serial = { workspace = true }
-thiserror = "2"
