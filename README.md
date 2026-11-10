@@ -52,4 +52,4 @@ cd projects\serial\web  ; node --test
 - 每个工具自包含（前端、数据模型、测试都在自己的目录里），可独立运行。
 - `localStorage` 键统一带工具前缀：`pcb-material-cabinet.*`、`serial-*`、`travel-*`。
 - 纯逻辑与 DOM 分离：`format.js` 这类模块不碰浏览器 API，可直接用 `node --test` 覆盖。
-- 新增工具：放进 `projects/`，在 `serve.py` 的 `TOOLS` 里加一行挂载，并在 `portal/index.html` 加一张卡片。
+- 新增工具、提交规范、分支策略见 [CONTRIBUTING.md](CONTRIBUTING.md)。
