@@ -48,9 +48,27 @@ def validate(state):
     if 'buffer' in meeting and meeting['buffer'] not in ('0', '10', '15', '30'):
         raise ValueError('缓冲时间不正确')
 
-def create_server(port=8765, db_path=None):
+def build_mounts(tools):
+    """把 {URL 前缀: 目录} 校验并整理成按前缀长度倒序的挂载表。
+
+    以 `/` 结尾的前缀用于挂载工具目录；`/` 单独表示站点根（工具目录页）。
+    未传入 tools 时返回空表，服务方式与单工具版本保持一致。
+    """
+    mounts = []
+    for prefix, directory in (tools or {}).items():
+        if not prefix.startswith('/') or (prefix != '/' and not prefix.endswith('/')):
+            raise ValueError('工具路径必须以 / 开头并以 / 结尾：' + prefix)
+        base = Path(directory).resolve()
+        if not base.is_dir():
+            raise ValueError('工具目录不存在：' + str(directory))
+        mounts.append((prefix, base))
+    mounts.sort(key=lambda item: len(item[0]), reverse=True)
+    return mounts
+
+def create_server(port=8765, db_path=None, tools=None):
     database = Path(db_path or os.environ.get('TRAVEL_DB', ROOT / 'data' / 'travel.sqlite3'))
     database.parent.mkdir(parents=True, exist_ok=True)
+    mounts = build_mounts(tools)
     @contextmanager
     def connect():
         connection = sqlite3.connect(database, timeout=10)
@@ -84,6 +102,46 @@ def create_server(port=8765, db_path=None):
                 return False
             return True
 
+        def redirect(self, location):
+            self.send_response(301)
+            self.send_header('Location', location)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+
+        def serve_file(self, root, relative):
+            base = Path(root).resolve()
+            target = (base / (relative or 'index.html')).resolve()
+            if not target.is_relative_to(base):
+                self.reply(403, {'error': '路径不可访问'})
+                return
+            if target.is_dir():
+                target = target / 'index.html'
+            if not target.is_file():
+                self.reply(404, {'error': '文件不存在'})
+                return
+            raw = target.read_bytes()
+            self.send_response(200)
+            self.send_header('Content-Type', (mimetypes.guess_type(target.name)[0] or 'application/octet-stream') + '; charset=utf-8')
+            self.send_header('Content-Length', str(len(raw)))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def serve_tool(self, path):
+            for prefix, root in mounts:
+                if prefix == '/':
+                    if path == '/':
+                        self.serve_file(root, 'index.html')
+                        return
+                elif path == prefix[:-1]:
+                    # 少了结尾斜杠：相对资源会解析到上一层，必须补斜杠
+                    self.redirect(prefix)
+                    return
+                elif path.startswith(prefix):
+                    self.serve_file(root, unquote(path[len(prefix):]))
+                    return
+            self.reply(404, {'error': '工具不存在'})
+
         def do_GET(self):
             if not self.allowed():
                 return
@@ -99,23 +157,10 @@ def create_server(port=8765, db_path=None):
             if path.startswith('/api/'):
                 self.reply(404, {'error': '接口不存在'})
                 return
-            static = ROOT / 'dist'
-            target = (static / unquote(path).lstrip('/')).resolve()
-            if not target.is_relative_to(static.resolve()):
-                self.reply(403, {'error': '路径不可访问'})
-                return
-            if target.is_dir():
-                target = target / 'index.html'
-            if not target.is_file():
-                self.reply(404, {'error': '文件不存在'})
-                return
-            raw = target.read_bytes()
-            self.send_response(200)
-            self.send_header('Content-Type', (mimetypes.guess_type(target.name)[0] or 'application/octet-stream') + '; charset=utf-8')
-            self.send_header('Content-Length', str(len(raw)))
-            self.send_header('Cache-Control', 'no-cache')
-            self.end_headers()
-            self.wfile.write(raw)
+            if mounts:
+                self.serve_tool(path)
+            else:
+                self.serve_file(ROOT / 'dist', unquote(path).lstrip('/'))
 
         def do_PUT(self):
             if not self.allowed():

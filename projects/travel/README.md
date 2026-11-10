@@ -10,6 +10,17 @@ python server.py
 
 访问 http://127.0.0.1:8765/ 。继续使用原来的浏览器及这个完整地址。不要再用 `python -m http.server`，它不提供 API。端口被占用时先关闭旧静态服务器。可使用 `--port 8766`，但新端口无法读取原端口的浏览器配置。
 
+### 作为平台工具启动（推荐）
+
+仓库根目录的 `serve.py` 会启动单端口统一入口，本工具挂在 `/travel/` 下，与 PCB 物料柜共用一个 origin：
+
+```powershell
+cd ..\..          # 仓库根目录
+python serve.py   # → http://127.0.0.1:8765/travel/
+```
+
+两种方式共用同一份 `data/travel.sqlite3`、同一套 API，以及同一个 `localStorage`（按 origin 隔离，路径不参与），所以地图 Key 只需配置一次。
+
 ## 数据与迁移
 
 - 数据库：`data/travel.sqlite3`（Git 忽略），环境变量 `TRAVEL_DB` 可指定其他文件。
@@ -46,4 +57,4 @@ node --check dist/storage.js
 
 ## 范围
 
-本机单份行程，无账号、互联网登录或多人实时推送。只监听 127.0.0.1，连接同一后端的页面共用一份数据库。新版前端需要后端，不支持仅静态托管。远程仓库尚未配置。
+本机单份行程，无账号、互联网登录或多人实时推送。只监听 127.0.0.1，连接同一后端的页面共用一份数据库。新版前端需要后端，不支持仅静态托管。仓库地址：https://github.com/FukunHennan/tool （`projects/travel/`）。
