@@ -53,3 +53,7 @@ cd projects\serial\web  ; node --test
 - `localStorage` 键统一带工具前缀：`pcb-material-cabinet.*`、`serial-*`、`travel-*`。
 - 纯逻辑与 DOM 分离：`format.js` 这类模块不碰浏览器 API，可直接用 `node --test` 覆盖。
 - 新增工具、提交规范、分支策略见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 许可证
+
+[MIT](LICENSE)
