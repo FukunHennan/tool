@@ -133,3 +133,22 @@ export function humanBytes(n) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/**
+ * 协议解码：按协议从字节流解析出可读信号。
+ * 内置示例「温湿度」：帧 `02 02 01 <v>` = 温度 v ℃；`02 02 02 <v>` = 湿度 v %。
+ * 返回 `{ name, value }`；协议关闭或无法识别返回 null。
+ */
+export function decodeFrame(protocol, bytes) {
+  if (!protocol || protocol === 'none') return null;
+  if (protocol === 'env') return decodeEnvFrame(bytes);
+  return null;
+}
+
+export function decodeEnvFrame(bytes) {
+  if (!bytes || bytes.length < 4) return null;
+  if (bytes[0] !== 0x02 || bytes[1] !== 0x02) return null;
+  if (bytes[2] === 0x01) return { name: '温度', value: `${bytes[3]}℃` };
+  if (bytes[2] === 0x02) return { name: '湿度', value: `${bytes[3]}%` };
+  return null;
+}

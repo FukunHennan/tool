@@ -3,76 +3,142 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="浏览器串口调试：参数配置、HEX/文本收发、日志搜索与统计。">
-<title>串口助手 · Web Serial</title>
+<meta name="description" content="串口调试台：设备列表、数据目录、HEX/ASCII 显示、协议解码、定时发送。">
+<title>串口助手 · 调试台</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<!-- 顶栏 -->
 <header class="topbar">
   <a class="back" href="/">← 工具目录</a>
-  <h1>串口助手</h1>
-  <span class="chip">Web Serial</span>
+  <h1>串口助手 <span class="ver">v4</span></h1>
+  <span id="chip" class="chip">串口</span>
   <span class="spacer"></span>
   <span id="status" class="status">未连接</span>
 </header>
 
 <main>
-  <!-- 左：串口配置 -->
-  <aside class="panel" id="config-panel">
-    <h2>串口配置 <span class="lock" id="lock">🔓</span></h2>
-
-    <button id="pick" class="wide">选择串口…</button>
-    <div id="port-name" class="port-name">未选择端口</div>
-
-    <div class="field">
-      <span>波特率</span>
-      <input id="baud" type="number" min="300" max="4000000" step="1" list="bauds" value="115200">
-      <datalist id="bauds"></datalist>
+  <!-- 左：设备面板 -->
+  <aside class="panel dev-panel">
+    <div class="panel-head">
+      <h2>设备</h2>
+      <button id="refresh-ports" class="mini" title="刷新端口列表">刷新</button>
     </div>
-
-    <div class="field"><span>数据位</span><div class="seg" id="data-bits"></div></div>
-    <div class="field"><span>校验</span><div class="seg" id="parity"></div></div>
-    <div class="field"><span>停止位</span><div class="seg" id="stop-bits"></div></div>
-    <div class="field"><span>流控</span><div class="seg" id="flow"></div></div>
-
-    <div class="field">
-      <button id="connect" class="wide primary">连接 (o)</button>
+    <div class="dev-list" id="dev-list" role="listbox" aria-label="串口设备列表"></div>
+    <div class="dev-foot">
+      <div class="dev-target mono" id="dev-target">目标：—</div>
+      <button id="pick" class="wide">选择串口…</button>
+      <select id="port-list" class="wide" hidden></select>
     </div>
-    <div class="hint" id="config-hint">连接后配置自动锁定，断开解锁。</div>
   </aside>
 
-  <!-- 中：消息日志 -->
-  <section class="panel log">
-    <div class="log-toolbar">
-      <span class="title">消息</span>
-      <button id="hex-toggle" title="HEX / TEXT 显示切换 (x)">TEXT</button>
-      <span id="count" class="dim mono">0 条</span>
+  <!-- 中：数据目录 -->
+  <section class="panel data-panel">
+    <div class="data-toolbar">
+      <span class="title">数据目录</span>
+      <span id="count" class="dim mono">0 / 0 条</span>
       <input id="search" type="search" placeholder="搜索…（f）" autocomplete="off">
-      <label><input type="checkbox" id="auto-scroll" checked> 自动滚动</label>
-      <button id="clear" title="清空日志 (c)">清空</button>
-      <button id="copy" title="复制当前日志">复制</button>
+      <button id="clear" class="mini" title="清空日志 (c)">清空</button>
+      <button id="copy" class="mini" title="复制当前日志">复制</button>
     </div>
-    <div id="log" class="log-body" aria-live="polite"></div>
-    <div id="empty" class="log-empty">
-      日志为空<br>点击左侧「选择串口…」授权端口后按 o 连接
+
+    <div class="data-head" aria-hidden="true">
+      <span class="col time">时间</span>
+      <span class="col dev">设备</span>
+      <span class="col dir">方向</span>
+      <span class="col data">数据</span>
+      <span class="col parse">解析</span>
+    </div>
+    <div id="log" class="data-body" aria-live="polite"></div>
+    <div id="empty" class="data-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h10"/>
+        <circle cx="19" cy="17" r="2.4"/>
+      </svg>
+      <span>数据目录为空 · 在左侧选择设备后开始接收</span>
+      <small>行内容：时间 | 设备 | 方向 | 数据 | 解析</small>
     </div>
   </section>
 
-  <!-- 右：行尾追加 -->
-  <aside class="panel append">
-    <h2>行尾追加</h2>
-    <div class="seg vertical" id="append"></div>
-    <div class="hint">按 n 循环</div>
+  <!-- 右：参数面板 -->
+  <aside class="panel cfg-panel">
+    <div class="cfg-group">
+      <h2>常规</h2>
+      <div class="field">
+        <span>波特率</span>
+        <input id="baud" type="number" min="300" max="4000000" step="1" list="bauds" value="115200">
+        <datalist id="bauds"></datalist>
+      </div>
+      <div class="field"><span>数据位</span><div class="seg" id="data-bits"></div></div>
+      <div class="field"><span>校验</span><div class="seg" id="parity"></div></div>
+      <div class="field"><span>停止位</span><div class="seg" id="stop-bits"></div></div>
+      <div class="field"><span>流控</span><div class="seg" id="flow"></div></div>
+      <div class="field">
+        <button id="connect" class="wide primary">连接</button>
+      </div>
+    </div>
+
+    <div class="cfg-group">
+      <h2>显示</h2>
+      <div class="field">
+        <span>数据列格式</span>
+        <div class="seg" id="view-mode">
+          <button type="button" data-view="hex" aria-pressed="false">HEX</button>
+          <button type="button" data-view="ascii" aria-pressed="true">ASCII</button>
+        </div>
+      </div>
+      <label class="check-row"><input type="checkbox" id="auto-scroll" checked> 自动滚动</label>
+    </div>
+
+    <div class="cfg-group">
+      <h2>解码</h2>
+      <div class="field">
+        <span>协议</span>
+        <select id="decoder">
+          <option value="none">无</option>
+          <option value="env">温湿度</option>
+        </select>
+      </div>
+      <div class="hint" id="decoder-hint">温湿度帧：02 02 01 &lt;温度&gt; / 02 02 02 &lt;湿度&gt;</div>
+    </div>
+
+    <div class="cfg-group">
+      <h2>颜色</h2>
+      <div class="legend-row">
+        <span class="lg"><i class="dot rx"></i>RX 接收</span>
+        <span class="lg"><i class="dot tx"></i>TX 发送</span>
+      </div>
+    </div>
+
+    <div class="cfg-group">
+      <h2>会话</h2>
+      <div class="session-stats">
+        <div class="ss-row"><span>TX</span><b id="ss-tx" class="mono">0 B / 0</b></div>
+        <div class="ss-row"><span>RX</span><b id="ss-rx" class="mono">0 B / 0</b></div>
+        <div class="ss-row"><span>共</span><b id="ss-total" class="mono">0 条</b></div>
+      </div>
+    </div>
   </aside>
 </main>
 
-<!-- 底部：发送 -->
+<!-- 发送栏 -->
 <footer class="sendbar">
-  <span id="tx-mode" class="modepill" title="点击或按 ↑↓ 切换 HEX / ASCII 发送">ASCII</span>
+  <span id="tx-mode" class="modepill" title="点击切换 HEX / ASCII 发送">ASCII</span>
   <input id="tx" type="text" placeholder="输入要发送的内容，Enter 发送" autocomplete="off">
   <button id="send" class="primary">发送</button>
-  <div id="stats" class="stats mono">TX 0 B / 0 · RX 0 B / 0</div>
+  <button id="repeat" class="mini" title="重复发送 10 次">重复</button>
+  <div id="stats" class="stats mono">TX 0 B · RX 0 B</div>
+</footer>
+
+<!-- 状态栏 -->
+<footer class="statbar" id="statbar">
+  <span class="dot" aria-hidden="true"></span>
+  <span id="sb-status">未连接</span>
+  <span class="sb-sep" aria-hidden="true"></span>
+  <span id="sb-config" class="sb-config">—</span>
+  <span class="sb-spacer"></span>
+  <span id="sb-stats">TX 0 · RX 0</span>
 </footer>
 
 <script type="module" src="app.js"></script>

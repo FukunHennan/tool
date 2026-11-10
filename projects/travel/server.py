@@ -123,7 +123,7 @@ def create_server(port=8765, db_path=None, tools=None):
             self.send_response(200)
             self.send_header('Content-Type', (mimetypes.guess_type(target.name)[0] or 'application/octet-stream') + '; charset=utf-8')
             self.send_header('Content-Length', str(len(raw)))
-            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Cache-Control', 'no-store')
             self.end_headers()
             self.wfile.write(raw)
 

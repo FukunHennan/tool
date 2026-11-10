@@ -1,29 +1,32 @@
-/* 串口助手 · Web Serial
+/* 串口助手 · 调试台 v4
  *
- * 数据通道：navigator.serial（Chromium 系浏览器 + 安全上下文；localhost 满足）。
- * 纯逻辑（十六进制解析、日志格式化、环形缓冲、过滤统计）都在 format.js，有单测覆盖。
+ * 数据通道：优先 navigator.serial（Chromium 系 + 安全上下文）；
+ * 缺失时自动回退本机桥接（projects/serial/bridge.py，ws://127.0.0.1:8787）。
+ * 纯逻辑（十六进制、日志、过滤统计、协议解码）在 format.js，有 node 单测。
  */
 
 import {
-  APPEND_MODES, BAUD_RATES, RingLog, applyAppend, filterEntries,
-  humanBytes, nextAppend, padByteCount, parseHex, stamp, statsOf, toHex,
+  BAUD_RATES, RingLog, applyAppend, decodeFrame, filterEntries,
+  humanBytes, padByteCount, parseHex, stamp, statsOf, toHex,
 } from './format.js';
+import { createTransport } from './transport.js';
 
 const SETTINGS_KEY = 'serial-settings.v1';
 const MAX_DOM_LINES = 10_000;
 const MAX_FILTERED_RENDER = 3_000;
-const SERIAL_SUPPORTED = 'serial' in navigator;
+const transport = createTransport();
 
 const state = {
   port: null,
-  reader: null,
-  readTask: null,
+  deviceName: '',
+  devices: [],
   connected: false,
   hexView: false,
   autoScroll: true,
   append: 'none',
   txHex: false,
   query: '',
+  decoder: 'none',
   settings: { baudRate: 115200, dataBits: 8, parity: 'none', stopBits: 1, flowControl: 'none' },
   log: new RingLog(MAX_DOM_LINES),
 };
@@ -31,41 +34,49 @@ const state = {
 const $ = (id) => document.getElementById(id);
 const els = {
   status: $('status'),
+  chip: $('chip'),
+  refreshPorts: $('refresh-ports'),
+  devList: $('dev-list'),
+  devTarget: $('dev-target'),
   pick: $('pick'),
-  portName: $('port-name'),
-  baud: $('baud'),
-  bauds: $('bauds'),
-  connect: $('connect'),
-  lock: $('lock'),
-  configHint: $('config-hint'),
-  hexToggle: $('hex-toggle'),
+  portList: $('port-list'),
   count: $('count'),
+  viewMode: document.querySelectorAll('#view-mode button'),
+  decoder: $('decoder'),
   search: $('search'),
   autoScroll: $('auto-scroll'),
   clear: $('clear'),
   copy: $('copy'),
   log: $('log'),
   empty: $('empty'),
-  append: $('append'),
+  baud: $('baud'),
+  bauds: $('bauds'),
+  connect: $('connect'),
   txMode: $('tx-mode'),
   tx: $('tx'),
   send: $('send'),
+  repeat: $('repeat'),
   stats: $('stats'),
+  statbar: $('statbar'),
+  sbStatus: $('sb-status'),
+  sbConfig: $('sb-config'),
+  sbStats: $('sb-stats'),
+  ssTx: $('ss-tx'),
+  ssRx: $('ss-rx'),
+  ssTotal: $('ss-total'),
 };
 
 /* ---------------- 分段控件 ---------------- */
 
 const SEGMENTS = [
-  { id: 'data-bits', tokens: [[5, '5'], [6, '6'], [7, '7'], [8, '8']] },
-  { id: 'parity', tokens: [['none', 'N'], ['even', 'E'], ['odd', 'O']] },
-  { id: 'stop-bits', tokens: [[1, '1'], [2, '2']] },
-  { id: 'flow', tokens: [['none', '无'], ['hardware', '硬件'], ['software', '软件']] },
+  { id: 'data-bits', key: 'dataBits', tokens: [[5, '5'], [6, '6'], [7, '7'], [8, '8']] },
+  { id: 'parity', key: 'parity', tokens: [['none', 'N'], ['even', 'E'], ['odd', 'O']] },
+  { id: 'stop-bits', key: 'stopBits', tokens: [[1, '1'], [2, '2']] },
+  { id: 'flow', key: 'flowControl', tokens: [['none', '无'], ['hardware', '硬件'], ['software', '软件']] },
 ];
 
-const SEGMENT_KEY = { 'data-bits': 'dataBits', parity: 'parity', 'stop-bits': 'stopBits', flow: 'flowControl' };
-
 function buildSegments() {
-  for (const { id, tokens } of SEGMENTS) {
+  for (const { id, key, tokens } of SEGMENTS) {
     const host = $(id);
     host.replaceChildren();
     for (const [value, label] of tokens) {
@@ -74,29 +85,13 @@ function buildSegments() {
       button.textContent = label;
       button.dataset.value = String(value);
       button.addEventListener('click', () => {
-        state.settings[SEGMENT_KEY[id]] = value;
+        state.settings[key] = value;
         syncSegments();
         saveSettings();
       });
       host.append(button);
     }
   }
-
-  els.append.replaceChildren();
-  for (const mode of APPEND_MODES) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = mode.label;
-    button.dataset.value = mode.id;
-    button.title = mode.id === 'none' ? '不追加' : `追加 ${mode.label}`;
-    button.addEventListener('click', () => {
-      state.append = mode.id;
-      syncSegments();
-      saveSettings();
-    });
-    els.append.append(button);
-  }
-
   els.bauds.replaceChildren();
   for (const rate of BAUD_RATES) {
     const option = document.createElement('option');
@@ -106,14 +101,11 @@ function buildSegments() {
 }
 
 function syncSegments() {
-  for (const { id } of SEGMENTS) {
-    const current = state.settings[SEGMENT_KEY[id]];
+  for (const { id, key } of SEGMENTS) {
+    const current = state.settings[key];
     for (const button of $(id).children) {
       button.setAttribute('aria-pressed', String(button.dataset.value === String(current)));
     }
-  }
-  for (const button of els.append.children) {
-    button.setAttribute('aria-pressed', String(button.dataset.value === state.append));
   }
 }
 
@@ -129,16 +121,20 @@ function loadSettings() {
     if (['none', 'hardware', 'software'].includes(raw.flowControl)) state.settings.flowControl = raw.flowControl;
     if (typeof raw.hexView === 'boolean') state.hexView = raw.hexView;
     if (typeof raw.autoScroll === 'boolean') state.autoScroll = raw.autoScroll;
-    if (APPEND_MODES.some((mode) => mode.id === raw.append)) state.append = raw.append;
+    if (raw.decoder === 'env' || raw.decoder === 'none') state.decoder = raw.decoder;
   } catch {
     /* 配置损坏时用默认值 */
   }
   els.baud.value = String(state.settings.baudRate);
   els.autoScroll.checked = state.autoScroll;
+  els.decoder.value = state.decoder;
 }
 
 function saveSettings() {
-  const payload = { ...state.settings, hexView: state.hexView, autoScroll: state.autoScroll, append: state.append };
+  const payload = {
+    ...state.settings, hexView: state.hexView, autoScroll: state.autoScroll,
+    append: state.append, decoder: state.decoder,
+  };
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
   } catch {
@@ -156,17 +152,46 @@ function readSettingsFromInputs() {
   return state.settings;
 }
 
-/* ---------------- 串口 ---------------- */
+/* ---------------- 设备列表 ---------------- */
 
-function describePort(port) {
-  if (!port) return '未选择端口';
-  const info = port.getInfo ? port.getInfo() : {};
-  if (info.usbVendorId) {
-    const hex = (value) => value.toString(16).toUpperCase().padStart(4, '0');
-    return `USB ${hex(info.usbVendorId)}:${hex(info.usbProductId ?? 0)}`;
-  }
-  return '已授权串口';
+function deviceLabel(item) {
+  if (!item) return '—';
+  if (item.description) return `${item.path} · ${item.description}`;
+  return item.path || '已授权串口';
 }
+
+function renderDevices() {
+  state.devices.forEach((item) => {
+    const node = document.createElement('div');
+    node.className = 'dev-item' + (item.online ? ' online' : '') + (item === state.port ? ' connected' : '');
+    node.setAttribute('role', 'option');
+    node.setAttribute('aria-selected', String(item === state.port));
+    node.innerHTML =
+      `<span class="dev-dot" aria-hidden="true"></span>` +
+      `<span class="dev-body"><span class="dev-name">${deviceLabel(item)}</span></span>`;
+    node.addEventListener('click', () => {
+      state.port = item;
+      transport.select(item);
+      renderDevices();
+      syncUi();
+      setStatus(`已选择 ${deviceLabel(item)}，点「连接」`, '');
+    });
+    els.devList.append(node);
+  });
+}
+
+async function refreshDevices() {
+  try {
+    state.devices = await transport.listPorts();
+  } catch {
+    state.devices = [];
+  }
+  els.devList.replaceChildren();
+  renderDevices();
+  els.devTarget.textContent = `目标：${deviceLabel(state.port)}`;
+}
+
+/* ---------------- 状态与 UI 同步 ---------------- */
 
 function setStatus(text, kind = '') {
   els.status.textContent = text;
@@ -177,40 +202,52 @@ function syncUi() {
   const locked = state.connected;
   els.connect.textContent = locked ? '断开 (o)' : '连接 (o)';
   els.connect.classList.toggle('on', locked);
-  els.pick.disabled = locked;
+  els.connect.disabled = false;
+  els.refreshPorts.disabled = locked;
   els.baud.disabled = locked;
   for (const { id } of SEGMENTS) {
     for (const button of $(id).children) button.disabled = locked;
   }
-  els.lock.textContent = locked ? '🔒' : '🔓';
-  els.configHint.textContent = locked ? '已连接，配置已锁定。' : '连接后配置自动锁定，断开解锁。';
-  els.portName.textContent = describePort(state.port);
-  els.hexToggle.textContent = state.hexView ? 'HEX' : 'TEXT';
-  els.txMode.textContent = state.txHex ? 'HEX' : 'ASCII';
-  els.txMode.classList.toggle('hex', state.txHex);
+  els.chip.textContent = transport.name;
+  els.devTarget.textContent = `目标：${deviceLabel(state.port)}`;
+  syncViewMode();
   renderStats();
+  syncStatbar();
 }
 
-async function pickPort() {
-  if (!SERIAL_SUPPORTED) {
-    setStatus('浏览器不支持 Web Serial', 'err');
-    return;
+function syncViewMode() {
+  for (const button of els.viewMode) {
+    const on = (button.dataset.view === 'hex') === state.hexView;
+    button.setAttribute('aria-pressed', String(on));
   }
+}
+
+function syncStatbar() {
+  const s = state.settings;
+  const err = els.status.classList.contains('err');
+  const kind = state.connected ? 'on' : err ? 'err' : '';
+  els.statbar.className = `statbar ${kind}`.trim();
+  els.sbStatus.textContent = state.connected
+    ? `已连接 ${deviceLabel(state.port)}`
+    : err ? '连接异常' : '未连接';
+  const flow = s.flowControl === 'hardware' ? ' RTS/CTS' : s.flowControl === 'software' ? ' XON/XOFF' : '';
+  els.sbConfig.textContent = `${s.baudRate} ${s.dataBits}${String(s.parity).charAt(0).toUpperCase()}${s.stopBits}${flow}`;
+}
+
+/* ---------------- 连接 / 收发 ---------------- */
+
+async function pickPort() {
   try {
-    const port = await navigator.serial.requestPort();
-    state.port = port;
-    setStatus('端口已授权，点「连接」打开', '');
+    state.port = await transport.pickPort();
+    renderDevices();
     syncUi();
-  } catch {
-    setStatus('未选择端口', '');
+    setStatus('端口已选择，点「连接」打开', '');
+  } catch (error) {
+    setStatus(error.message || '未选择端口', '');
   }
 }
 
 async function connect() {
-  if (!SERIAL_SUPPORTED) {
-    setStatus('请用 Chrome / Edge 89+ 打开本页', 'err');
-    return;
-  }
   if (state.connected) return;
   if (!state.port) {
     await pickPort();
@@ -218,64 +255,27 @@ async function connect() {
   }
   const options = { ...readSettingsFromInputs() };
   try {
-    await state.port.open(options);
+    await transport.open(options);
   } catch (error) {
     setStatus(`打开失败：${error.message}`, 'err');
     return;
   }
   state.connected = true;
+  state.deviceName = deviceLabel(state.port);
   saveSettings();
   syncUi();
-  setStatus(`已连接 ${describePort(state.port)} @ ${options.baudRate}`, 'on');
-  state.readTask = readLoop();
-}
-
-async function readLoop() {
-  const port = state.port;
-  const reader = port.readable.getReader();
-  state.reader = reader;
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value && value.length) appendEntry('rx', value);
-    }
-  } catch (error) {
-    if (state.connected) setStatus(`读取出错：${error.message}`, 'err');
-  } finally {
-    reader.releaseLock();
-    state.reader = null;
-    if (state.connected) {
-      state.connected = false;
-      await closePort();
-      syncUi();
-      setStatus('已断开（设备移除或读取结束）', 'err');
-    }
-  }
-}
-
-async function closePort() {
-  try {
-    await state.port?.close();
-  } catch {
-    /* 已经关闭 */
-  }
+  renderDevices();
+  setStatus(`已连接 ${state.deviceName} @ ${options.baudRate}`, 'on');
 }
 
 async function disconnect() {
   if (!state.connected) return;
   state.connected = false;
   try {
-    await state.reader?.cancel();
+    await transport.close();
   } catch {
-    /* 读取器可能已释放 */
+    /* 已关闭 */
   }
-  try {
-    await state.readTask;
-  } catch {
-    /* 读取循环已退出 */
-  }
-  await closePort();
   syncUi();
   setStatus('未连接', '');
 }
@@ -285,63 +285,74 @@ async function toggleConnection() {
   else await connect();
 }
 
-async function send() {
-  if (!state.connected || !state.port?.writable) {
+async function sendOnce() {
+  if (!state.connected) {
     setStatus('未连接，无法发送', 'err');
-    return;
+    return false;
   }
   const text = els.tx.value;
   const raw = state.txHex ? parseHex(text) : new TextEncoder().encode(text);
-  const suffix = new TextEncoder().encode(APPEND_MODES.find((m) => m.id === state.append)?.value ?? '');
-  if (!raw.length && !suffix.length) return;
-
+  const suffix = new TextEncoder().encode(applyAppend('', state.append));
+  if (!raw.length && !suffix.length) return false;
   const payload = new Uint8Array(raw.length + suffix.length);
   payload.set(raw, 0);
   payload.set(suffix, raw.length);
-
-  const writer = state.port.writable.getWriter();
   try {
-    await writer.write(payload);
+    await transport.write(payload);
   } catch (error) {
     setStatus(`发送失败：${error.message}`, 'err');
-    return;
-  } finally {
-    writer.releaseLock();
+    return false;
   }
   appendEntry('tx', payload);
+  return true;
 }
 
-/* ---------------- 日志渲染 ---------------- */
-
-function matchesQuery(entry) {
-  if (!state.query) return true;
-  const needle = state.query.toLowerCase();
-  const haystack = state.hexView ? toHex(entry.bytes) : new TextDecoder().decode(entry.bytes);
-  return haystack.toLowerCase().includes(needle);
+async function send() {
+  await sendOnce();
 }
 
-function renderLine(entry) {
-  const line = document.createElement('div');
-  line.className = `line ${entry.dir}`;
+async function repeatSend() {
+  els.repeat.disabled = true;
+  try {
+    for (let i = 0; i < 10; i++) {
+      if (!state.connected) break;
+      await sendOnce();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  } finally {
+    els.repeat.disabled = false;
+  }
+}
 
-  const meta = document.createElement('span');
-  meta.className = 'meta';
-  meta.textContent = `[${stamp(entry.time)}] `;
+/* ---------------- 数据目录 ---------------- */
 
-  const arrow = document.createElement('span');
-  arrow.className = 'arrow';
-  arrow.textContent = entry.dir === 'tx' ? '► TX' : '◄ RX';
+function renderRow(entry) {
+  const row = document.createElement('div');
+  row.className = `drow ${entry.dir}`;
 
-  const size = document.createElement('span');
-  size.className = 'meta';
-  size.textContent = ` (${padByteCount(entry.bytes.length)} B) `;
+  const time = document.createElement('span');
+  time.className = 'c-time';
+  time.textContent = stamp(entry.time);
 
-  const body = document.createElement('span');
-  body.className = 'body';
-  body.textContent = state.hexView ? toHex(entry.bytes) : new TextDecoder().decode(entry.bytes);
+  const dev = document.createElement('span');
+  dev.className = 'c-dev';
+  dev.textContent = entry.dev || state.deviceName || '—';
 
-  line.append(meta, arrow, size, body);
-  return line;
+  const dir = document.createElement('span');
+  dir.className = 'c-dir';
+  dir.textContent = entry.dir === 'tx' ? 'TX' : 'RX';
+
+  const data = document.createElement('span');
+  data.className = 'c-data';
+  data.textContent = state.hexView ? toHex(entry.bytes) : new TextDecoder().decode(entry.bytes);
+
+  const parse = document.createElement('span');
+  parse.className = 'c-parse';
+  const decoded = decodeFrame(state.decoder, entry.bytes);
+  if (decoded) parse.textContent = `${decoded.name} ${decoded.value}`;
+
+  row.append(time, dev, dir, data, parse);
+  return row;
 }
 
 function appendEntry(dir, bytes) {
@@ -350,17 +361,24 @@ function appendEntry(dir, bytes) {
     updateCounters();
     return;
   }
-  els.log.append(renderLine(entry));
+  els.log.append(renderRow(entry));
   while (els.log.childElementCount > MAX_DOM_LINES) els.log.firstElementChild.remove();
   if (state.autoScroll) els.log.scrollTop = els.log.scrollHeight;
   updateCounters();
+}
+
+function matchesQuery(entry) {
+  if (!state.query) return true;
+  const needle = state.query.toLowerCase();
+  const haystack = state.hexView ? toHex(entry.bytes) : new TextDecoder().decode(entry.bytes);
+  return haystack.toLowerCase().includes(needle);
 }
 
 function rerenderLog() {
   const visible = filterEntries(state.log.items, state.query, { hex: state.hexView });
   const slice = visible.length > MAX_FILTERED_RENDER ? visible.slice(-MAX_FILTERED_RENDER) : visible;
   const fragment = document.createDocumentFragment();
-  for (const entry of slice) fragment.append(renderLine(entry));
+  for (const entry of slice) fragment.append(renderRow(entry));
   els.log.replaceChildren(fragment);
   if (state.autoScroll) els.log.scrollTop = els.log.scrollHeight;
   updateCounters(visible.length);
@@ -369,7 +387,7 @@ function rerenderLog() {
 function updateCounters(visibleCount) {
   const total = state.log.length;
   const shown = visibleCount ?? filterEntries(state.log.items, state.query, { hex: state.hexView }).length;
-  els.count.textContent = shown === total ? `${total} 条` : `${shown} / ${total} 条`;
+  els.count.textContent = `${shown} / ${total} 条`;
   els.empty.hidden = total > 0;
   renderStats();
 }
@@ -377,25 +395,39 @@ function updateCounters(visibleCount) {
 function renderStats() {
   const { rxBytes, rxCount, txBytes, txCount } = statsOf(state.log.items);
   els.stats.textContent = `TX ${humanBytes(txBytes)} / ${txCount} · RX ${humanBytes(rxBytes)} / ${rxCount}`;
+  els.sbStats.textContent = `TX ${humanBytes(txBytes)} / ${txCount} · RX ${humanBytes(rxBytes)} / ${rxCount}`;
+  els.ssTx.textContent = `${humanBytes(txBytes)} / ${txCount}`;
+  els.ssRx.textContent = `${humanBytes(rxBytes)} / ${rxCount}`;
+  els.ssTotal.textContent = `${state.log.length} 条`;
 }
 
 /* ---------------- 事件绑定 ---------------- */
 
 function bindUi() {
+  els.refreshPorts.addEventListener('click', () => { void refreshDevices(); });
   els.pick.addEventListener('click', () => { void pickPort(); });
   els.connect.addEventListener('click', () => { void toggleConnection(); });
   els.send.addEventListener('click', () => { void send(); });
+  els.repeat.addEventListener('click', () => { void repeatSend(); });
+
+  for (const button of els.viewMode) {
+    button.addEventListener('click', () => {
+      state.hexView = button.dataset.view === 'hex';
+      saveSettings();
+      syncViewMode();
+      rerenderLog();
+    });
+  }
+
+  els.decoder.addEventListener('change', () => {
+    state.decoder = els.decoder.value;
+    saveSettings();
+    rerenderLog();
+  });
 
   els.baud.addEventListener('change', () => {
     readSettingsFromInputs();
     saveSettings();
-  });
-
-  els.hexToggle.addEventListener('click', () => {
-    state.hexView = !state.hexView;
-    saveSettings();
-    syncUi();
-    rerenderLog();
   });
 
   els.autoScroll.addEventListener('change', () => {
@@ -428,14 +460,38 @@ function bindUi() {
 
   els.txMode.addEventListener('click', () => {
     state.txHex = !state.txHex;
-    syncUi();
+    els.txMode.classList.toggle('hex', state.txHex);
+    els.txMode.textContent = state.txHex ? 'HEX' : 'ASCII';
   });
 
-  if (SERIAL_SUPPORTED) {
-    navigator.serial.addEventListener('disconnect', (event) => {
-      if (event.target === state.port) void disconnect();
-    });
-  }
+  // 桥接模式：transport.pickPort() 通过此钩子弹出端口下拉
+  window.__bridgePickPort = (ports) => new Promise((resolve) => {
+    if (!ports.length) {
+      setStatus('未发现串口设备', 'err');
+      resolve(null);
+      return;
+    }
+    els.portList.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '请选择端口…';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    els.portList.append(placeholder);
+    for (const p of ports) {
+      const option = document.createElement('option');
+      option.value = p.path;
+      option.textContent = p.description ? `${p.path}（${p.description}）` : p.path;
+      els.portList.append(option);
+    }
+    els.portList.hidden = false;
+    const onPick = () => {
+      els.portList.hidden = true;
+      els.portList.removeEventListener('change', onPick);
+      resolve(ports.find((p) => p.path === els.portList.value) ?? null);
+    };
+    els.portList.addEventListener('change', onPick);
+  });
 }
 
 function bindShortcuts() {
@@ -461,7 +517,10 @@ function bindShortcuts() {
         break;
       case 'x':
         event.preventDefault();
-        els.hexToggle.click();
+        state.hexView = !state.hexView;
+        saveSettings();
+        syncViewMode();
+        rerenderLog();
         break;
       case 'c':
         event.preventDefault();
@@ -472,12 +531,6 @@ function bindShortcuts() {
         els.autoScroll.checked = !els.autoScroll.checked;
         els.autoScroll.dispatchEvent(new Event('change'));
         break;
-      case 'n':
-        event.preventDefault();
-        state.append = nextAppend(state.append);
-        saveSettings();
-        syncSegments();
-        break;
       case 'f':
         event.preventDefault();
         els.search.focus();
@@ -486,7 +539,8 @@ function bindShortcuts() {
       case 'arrowdown':
         event.preventDefault();
         state.txHex = !state.txHex;
-        syncUi();
+        els.txMode.classList.toggle('hex', state.txHex);
+        els.txMode.textContent = state.txHex ? 'HEX' : 'ASCII';
         break;
       default:
         break;
@@ -504,22 +558,29 @@ async function boot() {
   bindShortcuts();
   syncUi();
 
-  if (!SERIAL_SUPPORTED) {
-    els.pick.disabled = true;
-    els.connect.disabled = true;
-    setStatus('当前浏览器不支持 Web Serial，请用 Chrome / Edge 打开', 'err');
-    els.configHint.textContent = 'Web Serial 仅 Chromium 内核浏览器支持；通过 localhost 或 HTTPS 访问。';
-    return;
-  }
-
-  const granted = await navigator.serial.getPorts();
-  if (granted.length) {
-    state.port = granted[0];
+  transport.onData((bytes) => appendEntry('rx', bytes));
+  transport.onClosed((reason) => {
+    if (!state.connected) return;
+    state.connected = false;
     syncUi();
-    setStatus('已恢复此前授权的端口', '');
+    setStatus(`已断开（${reason}）`, 'err');
+  });
+
+  if (transport.kind === 'bridge') {
+    const ok = await transport.connect();
+    if (!ok) {
+      els.pick.disabled = true;
+      els.refreshPorts.disabled = true;
+      els.connect.disabled = true;
+      setStatus('桥接服务未运行，无法连接串口', 'err');
+      return;
+    }
+    setStatus('桥接已就绪');
   } else {
     setStatus('未连接');
   }
+  await refreshDevices();
+  syncUi();
 }
 
 void boot();

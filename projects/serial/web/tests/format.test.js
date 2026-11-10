@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  APPEND_MODES, applyAppend, filterEntries, formatLogLine, humanBytes,
+  APPEND_MODES, applyAppend, decodeFrame, filterEntries, formatLogLine, humanBytes,
   nextAppend, padByteCount, parseHex, RingLog, statsOf, stamp, toHex,
 } from '../format.js';
 
@@ -105,4 +105,13 @@ test('humanBytes 在 B/KB/MB 之间切换', () => {
   assert.equal(humanBytes(512), '512 B');
   assert.equal(humanBytes(1536), '1.5 KB');
   assert.equal(humanBytes(2 * 1024 * 1024), '2.0 MB');
+});
+
+test('decodeFrame 温湿度协议解析', () => {
+  assert.deepEqual(decodeFrame('none', new Uint8Array([2, 2, 1, 25])), null);
+  assert.deepEqual(decodeFrame('env', new Uint8Array([2, 2, 1, 25])), { name: '温度', value: '25℃' });
+  assert.deepEqual(decodeFrame('env', new Uint8Array([2, 2, 2, 55])), { name: '湿度', value: '55%' });
+  assert.equal(decodeFrame('env', new Uint8Array([2, 3, 1, 25])), null);
+  assert.equal(decodeFrame('env', new Uint8Array([2, 2])), null);
+  assert.equal(decodeFrame('env', new Uint8Array([2, 2, 9, 25])), null);
 });
