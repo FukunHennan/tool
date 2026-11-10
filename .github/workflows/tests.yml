@@ -31,6 +31,8 @@ jobs:
           npm test
           npm run build
 
-      - name: 串口助手 · 逻辑层测试
-        working-directory: projects/serial/web
-        run: node --test
+      - name: 串口助手 · 桥接与逻辑层测试
+        working-directory: projects/serial
+        run: |
+          python -m unittest discover -s tests
+          cd web && node --test

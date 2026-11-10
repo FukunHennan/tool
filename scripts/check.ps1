@@ -29,6 +29,7 @@ Invoke-Check '出行地图 · Node 存储测试' 'projects/travel' { node --test
 Invoke-Check 'PCB 物料柜 · 安装依赖' 'projects/pcb-cabinet' { npm ci --no-audit --no-fund }
 Invoke-Check 'PCB 物料柜 · 单元测试' 'projects/pcb-cabinet' { npm test }
 Invoke-Check 'PCB 物料柜 · 构建' 'projects/pcb-cabinet' { npm run build }
+Invoke-Check '串口助手 · 桥接协议测试' 'projects/serial' { python -m unittest discover -s tests }
 Invoke-Check '串口助手 · 逻辑层测试' 'projects/serial/web' { node --test }
 
 if ($failures.Count -gt 0) {
