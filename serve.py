@@ -19,8 +19,8 @@ from server import create_server  # noqa: E402  来自 projects/travel/server.py
 
 TOOLS = {
     '/': ROOT / 'portal',
-    '/pcb/': ROOT / 'projects' / 'pcb-cabinet',
-    '/serial/': ROOT / 'projects' / 'serial' / 'web',
+    '/pcb/': ROOT / 'projects' / 'pcb-cabinet' / 'dist',
+    '/serial/': ROOT / 'projects' / 'serial' / 'web' / 'dist',
     '/esp32/': ROOT / 'projects' / 'esp-flasher' / 'dist',
     '/travel/': ROOT / 'projects' / 'travel' / 'dist',
 }

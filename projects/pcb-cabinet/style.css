@@ -1,0 +1,139 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   PCB 物料柜 · 平台设计系统（与串口/ESP32 同一套 token）
+   ============================================================ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.145 0.018 265);
+  --foreground: oklch(0.97 0.008 250);
+  --card: oklch(0.195 0.02 265);
+  --card-foreground: oklch(0.97 0.008 250);
+  --popover: oklch(0.185 0.02 265);
+  --popover-foreground: oklch(0.97 0.008 250);
+  --primary: oklch(0.62 0.19 255);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.26 0.03 265);
+  --secondary-foreground: oklch(0.95 0.01 250);
+  --muted: oklch(0.24 0.022 265);
+  --muted-foreground: oklch(0.72 0.02 255);
+  --accent: oklch(0.32 0.06 275);
+  --accent-foreground: oklch(0.95 0.02 275);
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+  --border: oklch(0.3 0.03 265);
+  --input: oklch(0.3 0.03 265);
+  --ring: oklch(0.66 0.18 255);
+  --chart-1: oklch(0.62 0.19 255);
+  --chart-2: oklch(0.7 0.16 165);
+  --chart-3: oklch(0.78 0.15 80);
+  --chart-4: oklch(0.65 0.18 300);
+  --chart-5: oklch(0.72 0.15 20);
+  --success: oklch(0.72 0.15 160);
+  --warning: oklch(0.8 0.14 85);
+}
+
+.dark {
+  --background: oklch(0.145 0.018 265);
+  --foreground: oklch(0.97 0.008 250);
+  --card: oklch(0.195 0.02 265);
+  --card-foreground: oklch(0.97 0.008 250);
+  --popover: oklch(0.185 0.02 265);
+  --popover-foreground: oklch(0.97 0.008 250);
+  --primary: oklch(0.62 0.19 255);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.26 0.03 265);
+  --secondary-foreground: oklch(0.95 0.01 250);
+  --muted: oklch(0.24 0.022 265);
+  --muted-foreground: oklch(0.72 0.02 255);
+  --accent: oklch(0.32 0.06 275);
+  --accent-foreground: oklch(0.95 0.02 275);
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.98 0.01 25);
+  --border: oklch(0.3 0.03 265);
+  --input: oklch(0.3 0.03 265);
+  --ring: oklch(0.66 0.18 255);
+  --success: oklch(0.72 0.15 160);
+  --warning: oklch(0.8 0.14 85);
+}
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Geist Variable", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace; }
+
+/* ---------- 柜格卡片 ---------- */
+
+.cell-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s, transform .06s;
+  overflow: hidden;
+}
+.cell-card:hover { border-color: var(--ring); }
+.cell-card:active { transform: scale(.985); }
+
+.cell-bar {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--muted-foreground);
+}
+.cell-card.state-normal .cell-bar { background: var(--success); }
+.cell-card.state-low .cell-bar { background: var(--warning); }
+.cell-card.state-out .cell-bar { background: var(--destructive); }
+.cell-card.state-empty { border-style: dashed; opacity: .75; }

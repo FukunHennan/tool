@@ -8,9 +8,9 @@
 
 | 工具 | 目录 | 说明 |
 | --- | --- | --- |
-| PCB 物料柜 | `projects/pcb-cabinet/` | 区域 / 柜体格位可视化管理，物料计数、低库存与缺料预警。单文件前端 + Vite/Vitest 模块源码 |
-| 串口助手 | `projects/serial/web/` | 浏览器串口调试：参数配置、HEX / 文本收发、行尾追加、日志搜索与统计。优先 Web Serial，缺失时自动回退本机桥接（`projects/serial/bridge.py`） |
-| ESP32 烧录器 | `projects/esp-flasher/` | 基于 Espressif 官方 esptool-js 的网页烧录：选择固件 bin 与偏移、连接检测芯片、烧录 / 擦除。React + shadcn/ui（Tailwind 4）。需要 Chrome / Edge（Web Serial） |
+| PCB 物料柜 | `projects/pcb-cabinet/` | 区域 / 柜体格位可视化管理，物料计数、低库存与缺料预警。React + shadcn/ui |
+| 串口助手 | `projects/serial/web/` | 浏览器串口调试台：设备列表、数据目录、HEX / 文本收发、协议解码、搜索统计。React + shadcn/ui；优先 Web Serial，缺失时自动回退本机桥接（`projects/serial/bridge.py`） |
+| ESP32 烧录器 | `projects/esp-flasher/` | 基于 Espressif 官方 esptool-js 的网页烧录：选择固件 bin 与偏移、连接检测芯片、烧录 / 擦除。React + shadcn/ui。需要 Chrome / Edge（Web Serial） |
 | 一起出发 · 出游地图 | `projects/travel/` | 景点、住处、同伴位置放在同一张地图上，集合时间与路线估算。原生前端 + Python/SQLite 后端 |
 
 ## 启动
