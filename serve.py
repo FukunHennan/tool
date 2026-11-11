@@ -21,6 +21,7 @@ TOOLS = {
     '/': ROOT / 'portal',
     '/pcb/': ROOT / 'projects' / 'pcb-cabinet',
     '/serial/': ROOT / 'projects' / 'serial' / 'web',
+    '/esp32/': ROOT / 'projects' / 'esp-flasher' / 'dist',
     '/travel/': ROOT / 'projects' / 'travel' / 'dist',
 }
 

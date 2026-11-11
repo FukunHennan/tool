@@ -31,6 +31,13 @@ jobs:
           npm test
           npm run build
 
+      - name: ESP32 烧录器 · 单元测试与构建
+        working-directory: projects/esp-flasher
+        run: |
+          npm ci
+          npm test
+          npm run build
+
       - name: 串口助手 · 桥接与逻辑层测试
         working-directory: projects/serial
         run: |

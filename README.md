@@ -10,6 +10,7 @@
 | --- | --- | --- |
 | PCB 物料柜 | `projects/pcb-cabinet/` | 区域 / 柜体格位可视化管理，物料计数、低库存与缺料预警。单文件前端 + Vite/Vitest 模块源码 |
 | 串口助手 | `projects/serial/web/` | 浏览器串口调试：参数配置、HEX / 文本收发、行尾追加、日志搜索与统计。优先 Web Serial，缺失时自动回退本机桥接（`projects/serial/bridge.py`） |
+| ESP32 烧录器 | `projects/esp-flasher/` | 基于 Espressif 官方 esptool-js 的网页烧录：选择固件 bin 与偏移、连接检测芯片、烧录 / 擦除。React + shadcn/ui（Tailwind 4）。需要 Chrome / Edge（Web Serial） |
 | 一起出发 · 出游地图 | `projects/travel/` | 景点、住处、同伴位置放在同一张地图上，集合时间与路线估算。原生前端 + Python/SQLite 后端 |
 
 ## 启动
@@ -25,6 +26,7 @@ python serve.py            # 默认 8765，可用 --port 覆盖
 | http://127.0.0.1:8765/ | 工具目录（平台入口页） |
 | http://127.0.0.1:8765/pcb/ | PCB 物料柜 |
 | http://127.0.0.1:8765/serial/ | 串口助手说明页（程序本身需本机运行） |
+| http://127.0.0.1:8765/esp32/ | ESP32 烧录器（需先 `cd projects\esp-flasher ; npm run build`） |
 | http://127.0.0.1:8765/travel/ | 出游地图，API 仍在根路径 `/api/*` |
 
 单端口、单 origin：无需 CORS，`localStorage` 在工具间共享（键名带工具前缀加以区分）。
@@ -43,6 +45,7 @@ python projects/serial/bridge.py     # 桥接服务 ws://127.0.0.1:8787/
 
 ```powershell
 cd projects\pcb-cabinet ; npm install ; npm run dev    # http://localhost:5173/
+cd projects\esp-flasher ; npm install ; npm run dev     # http://localhost:5173/
 cd projects\travel      ; python server.py             # http://127.0.0.1:8765/
 python projects\serial\bridge.py                       # 串口桥接（仅无 Web Serial 的环境需要）
 ```
@@ -52,6 +55,7 @@ python projects\serial\bridge.py                       # 串口桥接（仅无 W
 ```powershell
 cd projects\travel      ; python -m unittest discover -s tests -v ; node --test tests/storage.test.cjs
 cd projects\pcb-cabinet ; npm test
+cd projects\esp-flasher ; npm test
 cd projects\serial      ; python -m unittest discover -s tests ; cd web ; node --test
 ```
 
