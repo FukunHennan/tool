@@ -53,10 +53,9 @@ python projects\serial\bridge.py                       # 串口桥接（仅无 W
 ## 测试
 
 ```powershell
-cd projects\travel      ; python -m unittest discover -s tests -v ; node --test tests/storage.test.cjs
-cd projects\pcb-cabinet ; npm test
-cd projects\esp-flasher ; npm test
-cd projects\serial      ; python -m unittest discover -s tests ; cd web ; node --test
+pwsh scripts\check.ps1        # 一键检查；CI 用 npm ci，本地已有 node_modules 时用 npm install
+pwsh scripts\check.ps1 -Fast  # 强制本地快速安装
+pwsh scripts\check.ps1 -Plan  # 只打印将要执行的命令
 ```
 
 ## 约定

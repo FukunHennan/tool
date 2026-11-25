@@ -26,10 +26,39 @@ TOOLS = {
 }
 
 
+def build_command_for(directory):
+    project = Path(directory).resolve().parent
+    if (project / 'package.json').is_file():
+        return f'cd "{project}"; npm install; npm run build'
+    return None
+
+
+def missing_tools(tools=None):
+    missing = []
+    for prefix, directory in (tools if tools is not None else TOOLS).items():
+        resolved = Path(directory).resolve()
+        if not (resolved / 'index.html').is_file():
+            missing.append({
+                'prefix': prefix,
+                'directory': resolved,
+                'build_command': build_command_for(resolved),
+            })
+    missing.sort(key=lambda item: item['prefix'])
+    return missing
+
+
 def main():
     parser = argparse.ArgumentParser(description='工具平台本地统一入口')
     parser.add_argument('--port', type=int, default=8765)
     args = parser.parse_args()
+    missing = missing_tools()
+    if missing:
+        print('以下工具尚未构建：', flush=True)
+        for item in missing:
+            command = item['build_command'] or '请检查目录'
+            print(f"  {item['prefix']:<10} {command}", flush=True)
+        print('请先构建缺失工具，再启动统一入口。', flush=True)
+        return 1
     server = create_server(args.port, tools=TOOLS)
     base = f'http://127.0.0.1:{server.server_port}'
     print(f'Tool platform: {base}/', flush=True)
@@ -42,7 +71,8 @@ def main():
         pass
     finally:
         server.server_close()
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

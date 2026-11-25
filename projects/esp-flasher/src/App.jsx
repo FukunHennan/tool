@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ESPLoader, Transport } from 'esptool-js';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
 import { Card, CardContent } from './components/ui/card.jsx';
@@ -89,6 +88,7 @@ export default function App() {
         setStatus({ text: '未选择端口', kind: '' });
         return;
       }
+      const { ESPLoader, Transport } = await import('esptool-js');
       setStatus({ text: '连接中…', kind: 'busy' });
       const transport = new Transport(port, true);
       const loader = new ESPLoader({
